@@ -1,5 +1,5 @@
 import React from 'react'
-import {Target, BriefcaseBusiness, TrendingUp, MapPinned, ExternalLink, CircleCheck, AlertTriangle, ChevronRight, Clock3, Compass, FileText} from 'lucide-react'
+import {BriefcaseBusiness, ExternalLink, AlertTriangle, ChevronRight, Clock3} from 'lucide-react'
 
 export function dateLabel(value, withTime=false){
   if(!value) return 'Not recorded'
@@ -17,10 +17,6 @@ export function SourceFooter({source}){
   return <div className="evidenceFoot"><SourceLink source={source}/>{source.checkedAt&&<span>Retrieved {dateLabel(source.checkedAt,true)}{source.cached?' · cached response':''}</span>}</div>
 }
 
-function OverviewMetric({icon,label,value,detail,source,strong=false}){
-  return <section className={`overviewMetric ${strong?'accentMetric':''}`}><div className="overviewMetricLabel">{icon}<span>{label}</span></div><strong>{value}</strong><p>{detail}</p>{source&&<SourceLink source={source}>View source</SourceLink>}</section>
-}
-
 export function JobResults({jobs,limit=4}){
   const roles=jobs?.roles||[]
   if(!roles.length){
@@ -35,43 +31,52 @@ export function JobResults({jobs,limit=4}){
   </article>)}</div><p className="collectionNote">{jobs.note}</p></>
 }
 
-export default function Overview({data,profile,setActiveTab,onUpgrade,migrationCard=null}){
-  const rec=data.recommendation||{}, completeness=rec.profileCompleteness
-  const migration=data.migration, round=migration?.latestRound||{}, shortage=data.occupation, occupation=shortage?.occupationResult, jobs=data.jobs
-  const jobValue=typeof jobs?.count==='number'?jobs.count.toLocaleString():jobs?.status==='not_configured'?'Not connected':jobs?.status==='loading'?'Collecting':jobs?'Unavailable':'Loading'
-  const shortageValue=occupation?.stateRating||occupation?.nationalRating||(shortage?.status==='unavailable'?'Unavailable':shortage?'Not matched':'Loading')
-  return <div className="overviewContent">
-    <div className="overviewMetrics">
-      <OverviewMetric icon={<Target size={18}/>} label="Profile details" value={completeness?`${completeness.completed} of ${completeness.total}`:'Checking'} detail="Fields supplied. Review the checklist below." strong/>
-      <OverviewMetric icon={<BriefcaseBusiness size={18}/>} label="Collected job adverts" value={jobValue} detail={typeof jobs?.count==='number'?`From ${jobs.scannedCount} retrieved rows for ${jobs.query?.location||profile.location}.`:'A connected provider is needed to count vacancies.'} source={jobs}/>
-      <OverviewMetric icon={<TrendingUp size={18}/>} label={occupation?.stateRating?`${occupation.state} shortage rating`:'National shortage rating'} value={shortageValue} detail={occupation?`${shortage.oslYear} OSL · ${occupation.occupation}`:shortage?.shortageNote||'Reading the published occupation workbook.'} source={shortage}/>
-      <OverviewMetric icon={<MapPinned size={18}/>} label="Latest published 189 round" value={round.minimumPoints!=null?`${round.minimumPoints} points`:round.invitations!=null?round.invitations.toLocaleString()+' invitations':migration?'Unavailable':'Loading'} detail={round.date?`${round.date} · ${round.minimumPoints!=null?'occupation minimum':'all invited occupations'}`:migration?.note||'Reading Home Affairs invitation tables.'} source={migration}/>
+const fmt=(v,o={day:'numeric',month:'short',year:'numeric'})=>{if(!v) return '';const d=new Date(v.length===10?v+'T00:00:00':v);return Number.isNaN(d.getTime())?v:d.toLocaleDateString('en-AU',o)}
+
+const listJoin=a=>a.length<2?a.join(''):`${a.slice(0,-1).join(', ')} and ${a[a.length-1]}`
+
+function Tile({label,value,detail,onClick,tone}){return <button className={`homeTile ${tone||''}`} onClick={onClick}><span>{label}</span><strong>{value}</strong><small>{detail}</small><em>Open<ChevronRight size={13}/></em></button>}
+
+export default function Home({data,profile,plan,planLoading,activeId,checks,toggleCheck,setActiveTab,onJobsAction,openProfile}){
+  const strategy=plan?.strategies?.find(s=>s.id===activeId)||plan?.strategies?.[0]
+  const pending=(strategy?.milestones||[]).filter(m=>m.status!=='done'&&!(m.tasks.length&&m.tasks.every(t=>checks[t.id])))
+  const next=pending[0]
+  const nextTask=next?.tasks.find(t=>!checks[t.id])
+  const ctx=plan?.context||{}
+  const expiry=ctx.visaExpiry||profile.visaExpiry||''
+  const days=ctx.daysOnVisa!=null?ctx.daysOnVisa:expiry?Math.round((new Date(expiry+'T00:00:00')-new Date(new Date().toDateString()))/864e5):null
+  const target=plan?.strategies?.find(s=>s.id==='189')?.points?.target
+  const pts=plan?.points?.total
+  const jobs=data?.jobs
+  const jobsValue=typeof jobs?.count==='number'?String(jobs.count):jobs?.status==='loading'?'Collecting':'Not collected'
+  const missing=plan?.missing||[]
+  return <div className="homeView">
+    {missing.length>0&&<button className="homeMissing" onClick={openProfile}><AlertTriangle size={16}/><span><b>{missing.length} answer{missing.length>1?'s':''} would sharpen your plan:</b> {missing.slice(0,3).map(m=>m.label.toLowerCase()).join(', ')}</span><em>Answer now<ChevronRight size={14}/></em></button>}
+
+    <section className="homeNext">
+      <span className="kicker">Your next step</span>
+      {next?<>
+        <h2>{next.title}</h2>
+        <p className="homeWhen"><Clock3 size={14}/>{next.deadline?`Due ${fmt(next.deadline)}`:next.end!==next.start?`${fmt(next.start)} to ${fmt(next.end)}`:fmt(next.start)}{strategy&&<> · part of <b>{strategy.name}</b></>}</p>
+        {nextTask&&<label className="homeTask"><input type="checkbox" checked={false} onChange={()=>toggleCheck(nextTask.id)}/><span>{nextTask.label}</span></label>}
+        <div className="homeActions">{nextTask?.action?.type==='jobs'?<button className="primary" onClick={()=>onJobsAction(nextTask.action)}>Find roles<ChevronRight size={16}/></button>:nextTask?.link?<a className="primary" href={nextTask.link} target="_blank" rel="noreferrer">Open official page<ExternalLink size={14}/></a>:null}<button className="homeGhost" onClick={()=>setActiveTab('Visa')}>See your full plan</button></div>
+      </>:<><h2>{planLoading?'Building your plan':ctx.settled?'You already hold permanent residence':'Your plan will appear here'}</h2><p className="homeWhen">{ctx.settled?'Focus on the roles in Jobs.':'Open Visa to choose a route.'}</p></>}
+    </section>
+
+    <div className="homeTiles">
+      <Tile label="Visa days left" value={days!=null?Math.max(0,days):'Add expiry'} detail={expiry?`${(profile.visa||'Current visa').replace(/ visa \(subclass (\d+)\)/,' ($1)')} · ${fmt(expiry)}`:'Needed for visa-gap warnings'} tone={days!=null&&days<120?'warn':''} onClick={()=>expiry?setActiveTab('Visa'):openProfile()}/>
+      <Tile label={plan?.points?.unknown?.length?'Points so far':'Points today'} value={pts??'–'} detail={plan?.points?.unknown?.length?`Incomplete: add ${listJoin(plan.points.unknown.map(u=>u==='English'?u:u.toLowerCase().replace('english','English')))}`:target?`Target ${target}`:'Pass mark 65 · no published minimum'} tone={pts!=null&&pts<(target||65)&&!plan?.points?.unknown?.length?'warn':''} onClick={()=>plan?.points?.unknown?.length?openProfile():setActiveTab('Visa')}/>
+      <Tile label="Matching jobs" value={jobsValue} detail={jobs?.query?`${jobs.query.role} · ${(jobs.query.location||'').split(',')[0]}`:`${profile.occupationTitle||profile.occupation} roles`} onClick={()=>setActiveTab('Jobs')}/>
     </div>
 
-    <div className="overviewGrid">
-      <section className="card priority overviewPriority"><span className="kicker">Your next action</span><h2>{rec.topAction?.title||'Preparing your next steps'}</h2><p>{rec.topAction?.why||'Recommendations will use your profile and the results returned by each source.'}</p><div className="actionRow"><button className="primary" onClick={onUpgrade}>Build Evidence Plan<ChevronRight size={16}/></button><span><Clock3 size={14}/>{rec.topAction?.time||'After source checks'}</span></div></section>
-
-      {migrationCard}
-      <section className="card profileEvidence"><div className="cardHead"><div><span className="kicker">What we know about you</span><h2>Profile checklist</h2></div><FileText/></div><p className="evidenceExplanation">{completeness?.explanation||'Checking which details you supplied.'}</p><div className="profileChecks">{completeness?.checks.map(check=><div key={check.id} className={check.present?'present':'missing'}>{check.present?<CircleCheck size={15}/>:<AlertTriangle size={15}/>}<span>{check.label}</span><b>{check.present?'Supplied':'Needed'}</b></div>)}</div></section>
-
-      <section className="card officialEvidence"><div className="cardHead"><div><span className="kicker">Department of Home Affairs</span><h2>Invitation evidence</h2></div><MapPinned/></div>
-        {round.date?<><dl className="evidenceFacts"><div><dt>Published round</dt><dd>{round.date}</dd></div><div><dt>Total subclass 189 invitations</dt><dd>{round.invitations?.toLocaleString()??'Not extracted'}</dd></div><div><dt>Occupation minimum</dt><dd>{round.minimumPoints!=null?`${round.minimumPoints} points`:round.occupationStatus==='unparsed'?'Table unavailable':'No published match'}</dd></div>{round.matchedOccupation&&<div><dt>Official occupation</dt><dd>{round.matchedOccupation}</dd></div>}{migration.occupationMapping&&<div><dt>Selected classification</dt><dd>{migration.occupationMapping.classification} {migration.occupationMapping.code}</dd></div>}{round.tieBreak&&<div><dt>Round tie break date</dt><dd>{round.tieBreak}</dd></div>}</dl><p className="evidenceExplanation">{migration.occupationNote}</p>{migration.mappingNote&&<p className="evidenceCaution">{migration.mappingNote}</p>}</>:<div className="dataEmpty"><AlertTriangle/><b>Round data unavailable</b><p>{migration?.note||'Waiting for the official source.'}</p></div>}
-        <SourceFooter source={migration}/>
+    <div className="homeGrid">
+      <section className="card homeSteps"><div className="cardHead"><div><span className="kicker">Coming up</span><h2>Next steps</h2></div><button className="textBtn" onClick={()=>setActiveTab('Visa')}>All steps<ChevronRight size={14}/></button></div>
+        {pending.slice(0,3).map((m,i)=>{const done=m.tasks.filter(t=>checks[t.id]).length;return <div key={m.id} className={`homeStep ${i===0?'first':''}`}><span className="homeDate"><b>{fmt(m.deadline||m.start,{day:'numeric'})}</b>{fmt(m.deadline||m.start,{month:'short'})} {String(new Date((m.deadline||m.start)+'T00:00:00').getFullYear()).slice(2)}</span><div><b>{m.title}</b><small>{m.tasks.length?`${done} of ${m.tasks.length} tasks`:m.uncertain?'Estimated date':''}{m.deadline?' · deadline':''}</small></div></div>})}
+        {!pending.length&&<p className="evidenceExplanation">{planLoading?'Loading your steps…':'No steps yet.'}</p>}
       </section>
-
-      <section className="card officialEvidence"><div className="cardHead"><div><span className="kicker">Jobs and Skills Australia</span><h2>Occupation shortage</h2></div><TrendingUp/></div>
-        {occupation?<><p className="officialOccupation">{occupation.occupation}<span>{occupation.classification} {occupation.code} · {shortage.oslYear} Occupation Shortage List</span></p><dl className="evidenceFacts"><div><dt>Australia</dt><dd>{occupation.nationalRating||'Not assessed'}</dd></div><div><dt>{occupation.state}</dt><dd>{occupation.stateRating||'Rating unavailable'}</dd></div></dl><p className="evidenceExplanation">A shortage describes employer recruitment difficulty. It does not establish your visa eligibility or guarantee a job.</p><details className="ratingDetails"><summary>View all state and territory ratings</summary><dl className="evidenceFacts">{Object.entries(occupation.stateRatings||{}).map(([state,value])=><div key={state}><dt>{state}</dt><dd>{value||'Not assessed'}</dd></div>)}</dl></details><p className="evidenceCaution">{shortage.shortageNote}</p></>:<div className="dataEmpty"><AlertTriangle/><b>{shortage?.status==='unavailable'?'Shortage data unavailable':'Occupation match needed'}</b><p>{shortage?.shortageNote||'Reading the official workbook.'}</p></div>}
-        {shortage?.downloadUrl&&<a className="evidenceLink" href={shortage.downloadUrl} target="_blank" rel="noreferrer">Download published workbook<ExternalLink size={12}/></a>}<SourceFooter source={shortage}/>
+      <section className="card homeJobs"><div className="cardHead"><div><span className="kicker">Top matches</span><h2>Roles for you</h2></div><button className="textBtn" onClick={()=>setActiveTab('Jobs')}>All jobs<ChevronRight size={14}/></button></div>
+        <JobResults jobs={jobs} limit={3}/>
       </section>
-
-      <section className="card overviewJobs"><div className="cardHead"><div><span className="kicker">Opportunity radar</span><h2>Advertised roles matching your profile</h2></div>{(jobs?.roles?.length||0)>4&&<button className="textBtn" onClick={()=>setActiveTab('Jobs')}>View all<ChevronRight size={15}/></button>}</div>
-        {jobs?.collectedAt&&<p className="collectionNote">Collected {dateLabel(jobs.collectedAt,true)}{jobs.status==='stale'?' · This collection needs a refresh.':''}</p>}
-        {jobs?.roles?.length>0&&jobs.status==='partial'&&<p className="evidenceCaution">The collection time is unknown. Listing availability has not been verified.</p>}
-        <JobResults jobs={jobs}/><SourceFooter source={jobs}/>
-      </section>
-
-      <section className="card overviewPathway"><div className="cardHead"><div><span className="kicker">Suggested sequence</span><h2>Your pathway map</h2></div><Compass/></div><p className="evidenceExplanation">Suggested from the information supplied. Completion of these steps has not been independently verified.</p><div className="timeline">{(rec.pathway||[]).slice(0,4).map((step,i)=><div key={i} className={step.status==='current'?'now':step.status==='complete'?'complete':''}><span>{step.status==='complete'?'INPUTS':step.status==='current'?'NOW':String(i+1).padStart(2,'0')}</span><div><b>{step.title}</b><p>{step.detail}</p></div><small>{step.horizon}</small></div>)}</div><button className="textBtn" onClick={()=>setActiveTab('My pathway')}>Open full pathway<ChevronRight size={14}/></button></section>
-      <section className="card overviewBlockers"><div className="cardHead"><div><span className="kicker">Details to resolve</span><h2>Current blockers</h2></div><AlertTriangle/></div>{(rec.blockers||[]).slice(0,3).map((blocker,i)=><div className="blocker" key={blocker.code||i}><span>{i+1}</span><div><b>{blocker.title}</b><p>{blocker.detail}</p></div></div>)}</section>
     </div>
   </div>
 }

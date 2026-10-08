@@ -1,6 +1,18 @@
 # Pathway: career fit, market evidence and PR roadmap
 
-## Landing and resume review (new)
+## App structure
+
+The dashboard has three sections: **Home**, **Jobs** and **Visa**. The layout follows Apple's Human Interface Guidelines: few top-level sections, the most important content first, progressive disclosure, and badges only for urgent items.
+
+* **Home**: your one next step (from the active visa plan, with its first task and a direct action), three numbers (visa days left, points, matching jobs), the next three steps and your top three job matches. A banner lists missing answers.
+* **Jobs**: advert search and evidence, plus a Demand card with JSA shortage ratings (formerly the Market tab).
+* **Visa**: the PR navigator (My plan, Compare routes, Points, Checks & deadlines, States & evidence). The tab badge appears only for a high-severity deadline within 90 days.
+* **Profile** (avatar in the sidebar, or top right on mobile) opens a panel with your resume summary (with a link back to the review screen) and the answers a resume cannot provide: visa expiry, date of birth, relationship, English, skills assessment, NAATI, Professional Year, sponsorship, regional willingness and target states. These answers are not repeated anywhere else.
+* **Sources**: a header button ("2 of 4 sources live") opens the source list. It replaces the panel that used to repeat on every tab.
+
+The My pathway and Market tabs and Employer mode were removed. Their generic or empty content repeated what the other sections show.
+
+## Landing and resume review
 
 * **Landing page.** Drag and drop or choose a resume (PDF, DOCX or TXT). Progress steps show while it is read, and a "Continue as ..." button appears for a saved profile.
 * **Section-aware parser** (`backend/resume_parser.py`). It splits the resume into its own sections, then reads entries anchored on date ranges. Experience comes only from each role's own dates; the old parser subtracted the earliest year anywhere in the text, so a standard such as AS 4254.2-2012 produced "14 years". Volunteering is separated even when it sits inside Experience. Education is read with its major or concentration and level, and high school is excluded from migration. Projects keep their tools. Achievements, publications, certifications, grouped skills, contact details and location are also extracted. DOCX tables are read as well.

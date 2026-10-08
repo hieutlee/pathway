@@ -41,7 +41,7 @@ export function downloadIcs(events,name='pathway-migration.ics'){
 }
 
 /* ---------- main view ---------- */
-export default function Migration({plan,loading,error,profile,setProfile,circumstances,setCircumstances,activeId,setActiveId,checks,toggleCheck,onJobsAction,jobs,onRefresh,sample}){
+export default function Migration({openProfile,plan,loading,error,profile,setProfile,circumstances,setCircumstances,activeId,setActiveId,checks,toggleCheck,onJobsAction,jobs,onRefresh,sample}){
   const [tab,setTab]=useState('plan')
   const [compare,setCompare]=useState(null)
   if(!plan&&loading) return <div className="singleView"><MigrationSkeleton/></div>
@@ -52,9 +52,10 @@ export default function Migration({plan,loading,error,profile,setProfile,circums
   const openPlan=id=>{setActiveId(id);setTab('plan');window.scrollTo?.({top:0,behavior:'smooth'})}
   return <div className="singleView migrationApp">
     <PrHero plan={plan} active={active} loading={loading}/>
-    <Circumstances plan={plan} profile={profile} setProfile={setProfile} c={circumstances} set={setCircumstances} sample={sample}/>
+    {(plan.missing||[]).length>0&&<button className="answersBanner" onClick={openProfile}><Info size={16}/><span><b>{plan.missing.length} answer{plan.missing.length>1?'s':''} would sharpen this plan</b>{plan.missing.slice(0,4).map(m=><em key={m.field}>{m.label}</em>)}</span><strong>Answer in Profile<ArrowRight size={14}/></strong></button>}
+    {sample&&<p className="sampleLine"><Info size={13}/>Sample answers are filled in for the demo profile. Replace them in your Profile.</p>}
     {plan.context?.settled?<section className="card settledCard"><BadgeCheck/><div><h3>{plan.headline?.title}</h3><p>{plan.headline?.detail}</p></div></section>:<>
-      <nav className="subTabs" role="tablist">{SUB_TABS.map(t=><button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}><t.icon size={16}/>{t.label}{t.id==='checks'&&<em>{(plan.deadlines||[]).filter(d=>d.severity==='high').length}</em>}</button>)}</nav>
+      <nav className="subTabs" role="tablist">{SUB_TABS.map(t=><button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}><t.icon size={16}/>{t.label}{t.id==='checks'&&(plan.deadlines||[]).some(d=>d.severity==='high'&&d.daysAway<=90)&&<em>{(plan.deadlines||[]).filter(d=>d.severity==='high'&&d.daysAway<=90).length}</em>}</button>)}</nav>
       {tab==='plan'&&active&&<PlanView plan={plan} strategy={active} strategies={strategies} setActiveId={setActiveId} checks={checks} toggleCheck={toggleCheck} onJobsAction={onJobsAction} goRoutes={()=>setTab('routes')}/>}
       {tab==='plan'&&!active&&<section className="card dataEmpty"><TriangleAlert/><b>No route can be estimated yet</b><p>Answer the questions above, or open Compare routes to see why routes were ruled out.</p></section>}
       {tab==='routes'&&<Routes plan={plan} strategies={strategies} activeId={active?.id} compared={compared} setCompare={setCompare} openPlan={openPlan}/>}
@@ -79,7 +80,7 @@ function PrHero({plan,active,loading}){
     <div className="heroMain">
       <span className="heroKicker"><Sparkles size={14}/>PR navigator {loading&&<LoaderCircle size={13} className="spin"/>}</span>
       <h2>{ctx.settled?'You are already settled.':<>Your road to permanent residence</>}</h2>
-      {active&&<><p className="heroLead">Recommended now: <b>{active.name}</b>. {active.reasons?.[0]}</p><RouteChips route={active.route}/></>}
+      {active&&<p className="heroLead">Recommended now: <b>{shortName(active)}</b></p>}
     </div>
     <div className="heroStats">
       <div className="heroStat"><Ring value={days!=null?Math.max(0,days):0} max={730} label={days!=null?`${Math.max(0,days)}`:'?'} sub="days" tone={days!=null&&days<120?'warn':''}/><div><span>Current visa</span><b>{ctx.visa&&ctx.visa!=='unknown'?(ctx.visaText||ctx.visa):'Not set'}</b><small>{ctx.visaExpiry?`Expires ${fullDate(ctx.visaExpiry)}`:'Add expiry for gap warnings'}</small></div></div>
@@ -87,78 +88,10 @@ function PrHero({plan,active,loading}){
       <div className="heroStat wide"><div className="heroIcon"><Flag/></div><div><span>Earliest PR window for this route</span><b>{active?.prWindow?.label||'Not estimable yet'}</b><small>{active?.monthsToPr!=null?`About ${active.monthsToPr} months from today, if each step lands`:'Depends on an invitation or input still missing'}</small></div></div>
       <div className="heroStat wide"><div className="heroIcon"><Wallet/></div><div><span>Government charges on this route</span><b>{active?money(active.costs.government):'–'}</b><small>{active?`Plus about ${money(active.costs.otherLow)} to ${money(active.costs.otherHigh)} for tests, assessments and checks`:''}</small></div></div>
     </div>
-    <div className="liveStrip">{(plan.liveSources||[]).map(s=><a key={s.id} className={`liveSrc ${s.status==='fresh'?'ok':s.status==='fallback'?'fb':'bad'}`} href={s.sourceUrl||undefined} target="_blank" rel="noreferrer" title={s.detail}><i/>{s.label}<small>{s.status==='fresh'?'live':s.status==='fallback'?'rulebook':s.status==='partial'?'partial':'unavailable'}</small></a>)}</div>
   </section>
 }
 
 /* ---------- circumstances ---------- */
-const Q_OPTS=[['','Select'],['bachelor','Bachelor or honours'],['masters_coursework','Masters (coursework)'],['masters_research','Masters (research)'],['doctorate','Doctorate (PhD)'],['diploma','Diploma'],['trade','Trade qualification'],['other','Other']]
-const ENG_OPTS=[['','Not tested'],['competent','Competent (IELTS 6 each)'],['proficient','Proficient (IELTS 7 each)'],['superior','Superior (IELTS 8 each)'],['vocational','Below competent']]
-const SA_OPTS=[['','Select'],['none','Not started'],['submitted','Submitted'],['positive','Positive outcome']]
-const PARTNER_OPTS=[['','Select'],['single','Single'],['partner_citizen_pr','Partner is an Australian citizen or PR'],['partner_skilled','Partner: skilled (assessment + competent English)'],['partner_competent_english','Partner: competent English only'],['partner_other','Partner: none of the above']]
-const EMP_OPTS=[['','Select'],['yes','Yes'],['no','No']]
-const YNM=[['','Select'],['yes','Yes'],['maybe','Maybe'],['no','No']]
-const STATE_CODES=['QLD','NSW','VIC','SA','WA','TAS','ACT','NT']
-
-function F({label,children,hint,missing}){return <label className={`mField ${missing?'missing':''}`}><span>{label}{missing&&<em>affects plan</em>}</span>{children}{hint&&<small>{hint}</small>}</label>}
-function Sel({value,onChange,opts}){return <select value={value??''} onChange={e=>onChange(e.target.value)}>{opts.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>}
-function Num({value,onChange,step=0.5,min=0}){return <input type="number" step={step} min={min} value={value??''} onChange={e=>onChange(e.target.value===''?'':Number(e.target.value))}/>}
-function Toggle({value,onChange,label}){return <button type="button" className={`mToggle ${value?'on':''}`} aria-pressed={!!value} onClick={()=>onChange(!value)}><i/>{label}</button>}
-function Circumstances({plan,profile,setProfile,c,set,sample}){
-  const [open,setOpen]=useState(!!(plan.missing||[]).length)
-  const [more,setMore]=useState(false)
-  const miss=new Set((plan.missing||[]).map(m=>m.field))
-  const s=(k,v)=>set(prev=>({...prev,[k]:v}))
-  const ctx=plan.context||{}
-  const field=c.fieldOfStudy||ctx.field||''
-  const assessor=(ctx.fields||[]).find(f=>f.value===field)?.assessor
-  const regionalStudy=['yes','cat2','cat3'].includes(c.studyRegional)?'yes':'no'
-  const employer=['yes','offer','sponsoring','interested'].includes(c.employer)?'yes':['no','none'].includes(c.employer)?'no':''
-  return <section className={`card circCard ${open?'open':''}`}>
-    <button className="circHead" onClick={()=>setOpen(!open)} aria-expanded={open}>
-      <div><span className="kicker">Your circumstances</span><h3>{(plan.missing||[]).length?`${plan.missing.length} answer${plan.missing.length>1?'s':''} would sharpen this plan`:'Your answers are complete'}</h3><p>{open?'Every change updates your plan straight away. Saved on this device.':'Tap to review or change your answers.'}</p></div>
-      <div className="missChips">{(plan.missing||[]).slice(0,3).map(m=><span key={m.field} title={m.why}>{m.label}</span>)}</div>{open?<ChevronUp/>:<ChevronDown/>}
-    </button>
-    {open&&<>
-      {sample&&<div className="sampleNote"><Info size={14}/>These are sample answers for the demo profile. Replace them with yours.</div>}
-      <div className="circGrid four">
-        <fieldset><legend><Lock size={14}/>You</legend>
-          <F label="Current visa" hint="Change it on the profile screen"><input value={profile.visa||''} readOnly/></F>
-          <F label="Visa expiry" missing={miss.has('visaExpiry')}><input type="date" value={profile.visaExpiry||''} onChange={e=>setProfile(p=>({...p,visaExpiry:e.target.value}))}/></F>
-          <F label="Date of birth" missing={miss.has('dob')}><input type="date" value={c.dob||''} onChange={e=>s('dob',e.target.value)}/></F>
-          <F label="Relationship" missing={miss.has('partner')}><Sel value={c.partner} onChange={v=>s('partner',v)} opts={PARTNER_OPTS}/></F>
-          {c.partner==='partner_citizen_pr'&&<div className="two"><F label="Relationship type"><Sel value={c.partnerRelationship} onChange={v=>s('partnerRelationship',v)} opts={[['','Select'],['married','Married'],['registered','Registered'],['de_facto','De facto']]}/></F><F label="Months together"><Num value={c.relationshipMonths} step={1} onChange={v=>s('relationshipMonths',v)}/></F></div>}
-        </fieldset>
-        <fieldset><legend><GraduationCap size={14}/>Study</legend>
-          <F label="Field of study" hint={assessor?`Skills assessed by ${assessor}`:'Decides your assessing authority'}><Sel value={field} onChange={v=>s('fieldOfStudy',v)} opts={[['','Select'],...(ctx.fields||[]).map(f=>[f.value,f.label])]}/></F>
-          <F label="Highest qualification"><Sel value={c.qualification} onChange={v=>s('qualification',v)} opts={Q_OPTS}/></F>
-          <div className="two"><F label="Study state"><Sel value={c.studyState} onChange={v=>s('studyState',v)} opts={[['','Select'],...STATE_CODES.map(x=>[x,x])]}/></F><F label="Regional campus?"><Sel value={regionalStudy} onChange={v=>s('studyRegional',v)} opts={[['no','No'],['yes','Yes']]}/></F></div>
-          <F label="Course completion" missing={miss.has('courseCompletion')} hint="Date on your completion letter, actual or expected"><input type="date" value={c.courseCompletion||''} onChange={e=>s('courseCompletion',e.target.value)}/></F>
-        </fieldset>
-        <fieldset><legend><Languages size={14}/>English and skills</legend>
-          <F label="English level" missing={miss.has('englishLevel')} hint="Lowest band counts"><Sel value={c.englishLevel} onChange={v=>s('englishLevel',v)} opts={ENG_OPTS}/></F>
-          <F label="Skills assessment" missing={miss.has('skillsAssessment')} hint={assessor}><Sel value={c.skillsAssessment==='planned'?'none':c.skillsAssessment} onChange={v=>s('skillsAssessment',v)} opts={SA_OPTS}/></F>
-          <div className="toggleRow"><Toggle value={c.naati} onChange={v=>s('naati',v)} label="NAATI CCL passed"/>{ctx.pyEligible&&<Toggle value={c.professionalYear} onChange={v=>s('professionalYear',v)} label="Professional Year done"/>}</div>
-        </fieldset>
-        <fieldset><legend><BriefcaseBusiness size={14}/>Work and preferences</legend>
-          <F label="Working in your field now?" missing={miss.has('employedInOccupation')}><Sel value={c.employedInOccupation} onChange={v=>s('employedInOccupation',v)} opts={[['','Select'],['yes','Yes, 20+ hours a week'],['no','Not yet']]}/></F>
-          <F label="An employer will sponsor you?" missing={miss.has('employer')} hint={employer==='no'?'Sponsored routes are hidden':'Yes shows 482 and 186 routes'}><Sel value={employer} onChange={v=>s('employer',v)} opts={EMP_OPTS}/></F>
-          <F label="Live regionally for 3+ years?" missing={miss.has('regional')}><Sel value={c.regional} onChange={v=>s('regional',v)} opts={YNM}/></F>
-          <F label="States to target"><div className="stateChips">{STATE_CODES.map(st=>{const on=(c.preferredStates||[]).includes(st);return <button type="button" key={st} className={on?'on':''} onClick={()=>s('preferredStates',on?(c.preferredStates||[]).filter(x=>x!==st):[...(c.preferredStates||[]),st].slice(-2))}>{st}</button>})}</div></F>
-        </fieldset>
-      </div>
-      <button className="moreBtn" onClick={()=>setMore(!more)} aria-expanded={more}>{more?<ChevronUp size={15}/>:<ChevronDown size={15}/>}{more?'Hide extra details':'More details (optional): experience, dates, salary'}</button>
-      {more&&<div className="circGrid four extra">
-        <fieldset><F label="Australian skilled years"><Num value={c.auExperienceYears} onChange={v=>s('auExperienceYears',v)}/></F><F label="Overseas skilled years"><Num value={c.overseasExperienceYears} onChange={v=>s('overseasExperienceYears',v)}/></F></fieldset>
-        <fieldset><F label="Months worked in target state" hint="20+ hours a week, after graduating"><Num value={c.stateEmploymentMonths} step={1} onChange={v=>s('stateEmploymentMonths',v)}/></F><F label="Months worked regionally"><Num value={c.regionalEmploymentMonths} step={1} onChange={v=>s('regionalEmploymentMonths',v)}/></F></fieldset>
-        <fieldset><F label="English test date"><input type="date" value={c.englishTestDate||''} onChange={e=>s('englishTestDate',e.target.value)}/></F>{['submitted','positive'].includes(c.skillsAssessment)&&<F label="Assessment date"><input type="date" value={c.skillsAssessmentDate||''} onChange={e=>s('skillsAssessmentDate',e.target.value)}/></F>}<F label="Passport country" hint="UK, US, Canada, NZ and Ireland passports are exempt from English tests"><input value={c.passport||''} onChange={e=>s('passport',e.target.value)}/></F></fieldset>
-        <fieldset>{employer==='yes'&&<F label="Salary (AUD a year)"><Num value={c.salary} step={1000} onChange={v=>s('salary',v)}/></F>}{profile.visa?.includes('482')&&<F label="Months with your sponsor"><Num value={c.sponsorMonths} step={1} onChange={v=>s('sponsorMonths',v)}/></F>}<div className="toggleRow"><Toggle value={c.auQualification!==false} onChange={v=>s('auQualification',v)} label="Australian degree"/><Toggle value={c.specialistEducation} onChange={v=>s('specialistEducation',v)} label="STEM research degree"/></div></fieldset>
-      </div>}
-      {(plan.assumptions||[]).length>0&&<div className="assumeNote"><Info size={14}/><div>{plan.assumptions.map((a,i)=><p key={i}>{a}</p>)}</div></div>}
-    </>}
-  </section>
-}
-
 /* ---------- routes ---------- */
 function TrackCards({plan,strategies,activeId,onPick}){
   const ctx=plan.context||{}
@@ -260,7 +193,8 @@ function PlanView({plan,strategy,strategies,setActiveId,checks,toggleCheck,onJob
       <div className="phTop"><div><span className="kicker">{TRACKS.find(t=>t.id===strategy.track)?.label} route</span><h3>{shortName(strategy)}</h3><RouteChips route={strategy.route}/></div><LevelBadge level={strategy.level}/></div>
       <p className="phWhy">{strategy.reasons[0]}</p>
       {sameTrack.length>0&&<div className="altRoutes"><span>Other {TRACKS.find(t=>t.id===strategy.track)?.label.toLowerCase()} routes:</span>{sameTrack.map(s=><button key={s.id} onClick={()=>setActiveId(s.id)}>{shortName(s)}</button>)}<button className="linkish" onClick={goRoutes}>Compare all</button></div>}
-      <div className="roadMeta"><div><span>PR window</span><b>{strategy.prWindow.label}</b></div><div><span>Government charges</span><b>{money(strategy.costs.government)}</b><small>+ about {money(strategy.costs.otherLow)} to {money(strategy.costs.otherHigh)} other</small></div><div><span>Your progress</span><b>{done} of {allTasks.length} tasks</b><div className="prog"><i style={{width:`${allTasks.length?done/allTasks.length*100:0}%`}}/></div></div></div>
+      <div className="phProgress"><span>{done} of {allTasks.length} tasks done</span><div className="prog"><i style={{width:`${allTasks.length?done/allTasks.length*100:0}%`}}/></div></div>
+      {(plan.assumptions||[]).length>0&&<p className="fine">{plan.assumptions.join(' ')}</p>}
     </section>
     <div className="roadGrid">
       <section className="msList">
@@ -401,21 +335,3 @@ function Evidence({plan,jobs,onJobsAction,profile}){
   </div>
 }
 
-/* ---------- compact card for Overview ---------- */
-export function MigrationSummaryCard({plan,activeId,onOpen,loading}){
-  const s=plan?.strategies?.find(x=>x.id===activeId)||plan?.strategies?.[0]
-  const next=s?.milestones?.find(m=>m.status!=='done')
-  const ctx=plan?.context||{}
-  return <section className="card migSummary"><div className="cardHead"><div><span className="kicker">Permanent residence roadmap</span><h2>{ctx.settled?'No migration pathway needed':s?.name||(loading?'Building your roadmap':'Roadmap unavailable')}</h2></div><Route/></div>
-    {s&&<><RouteChips route={s.route}/><div className="migSumFacts"><div><span>Status</span><LevelBadge level={s.level}/></div><div><span>PR window</span><b>{s.prWindow.label}</b></div><div><span>Visa days left</span><b>{ctx.daysOnVisa!=null?Math.max(0,ctx.daysOnVisa):'Add expiry'}</b></div><div><span>Points today</span><b>{plan.points?.total}</b></div></div>
-      {next&&<div className="migNext"><Signpost size={16}/><div><b>Next: {next.title}</b><span>{fullDate(next.start)}{next.deadline?` · deadline ${fullDate(next.deadline)}`:''}</span></div></div>}</>}
-    <button className="textBtn" onClick={onOpen}>Open migration roadmap<ArrowRight size={14}/></button>
-  </section>
-}
-
-export function MigrationMilestones({plan,activeId,checks}){
-  const s=plan?.strategies?.find(x=>x.id===activeId)||plan?.strategies?.[0]
-  if(!s) return null
-  return <section className="card"><div className="cardHead"><div><span className="kicker">Migration milestones · {s.name}</span><h2>Your visa steps alongside your career</h2></div><RouteChips route={s.route} compact/></div>
-    <div className="timeline msTimeline">{s.milestones.map(m=>{const done=m.tasks.length>0&&m.tasks.every(t=>checks[t.id]);return <div key={m.id} className={m.status==='now'?'now':done?'complete':''}><span>{done?'DONE':m.status==='now'?'NOW':fmtDate(m.start,{month:'short'}).toUpperCase()}</span><div><b>{m.title}</b><p>{m.detail}</p></div><small>{fmtDate(m.start)}</small></div>})}</div></section>
-}

@@ -805,10 +805,9 @@ def strat_491(ctx: Ctx, pts_now, state):
         reasons.append(f"{pts_now + 15} points with the +15 regional nomination.")
         if ctx.regional != "yes":
             reasons.append("Confirm you can commit to 3+ years in a regional area.")
-    reasons.append(f"2026-27 planning level for 491 is {R.PLANNING_2026_27['491']:,}, down from {R.PLANNING_2026_27['previous']['491']:,}.")
     if level == "Viable" and ctx.regional != "yes":
         level = "Stretch"
-    b.risks.append({"level": "medium", "title": "Fewer 491 places in 2026-27", "detail": "The national 491 planning level fell by about 57%. Expect fewer nominations per state."})
+    b.risks.append({"level": "medium", "title": "Fewer 491 places in 2026-27", "detail": f"The national 491 planning level fell to {R.PLANNING_2026_27['491']:,} from {R.PLANNING_2026_27['previous']['491']:,}. Expect fewer nominations per state."})
     if state == "QLD":
         b.risks.append({"level": "medium", "title": "Locks out QLD 190 later", "detail": "Queensland will not nominate a current or past 491 applicant for 190."})
     route = (["500", "485", "491", "191"] if ctx.visa == "500" else [ctx.visa, "491", "191"])

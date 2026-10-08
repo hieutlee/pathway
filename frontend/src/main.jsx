@@ -3,9 +3,10 @@ import {createRoot} from 'react-dom/client'
 import {AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar} from 'recharts'
 import {UploadCloud, Sparkles, Compass, BriefcaseBusiness, MapPinned, BadgeCheck, RefreshCw, Clock3, Database, ChevronRight, FileText, CircleCheck, AlertTriangle, Search, Building2, TrendingUp, ShieldCheck, ArrowUpRight, Zap, Users, Target, LoaderCircle, ExternalLink, X, Check, Crown} from 'lucide-react'
 import './styles.css'
-import Overview from './Overview'
+import Home from './Overview'
 import Jobs from './Jobs'
-import Migration, {MigrationSummaryCard, MigrationMilestones} from './Migration'
+import Migration from './Migration'
+import {ProfileSheet, SourcesSheet} from './Profile'
 import {Landing, ResumeReview, SAMPLE_RESUME} from './ResumeReview'
 
 const API = '/api'
@@ -64,8 +65,9 @@ function App(){
   const [busy,setBusy]=useState(false)
   const [fileName,setFileName]=useState('')
   const [error,setError]=useState('')
-  const [activeTab,setActiveTab]=useState('Overview')
-  const [pricingOpen,setPricingOpen]=useState(false)
+  const [activeTab,setActiveTab]=useState('Home')
+  const [profileOpen,setProfileOpen]=useState(false)
+  const [sourcesOpen,setSourcesOpen]=useState(false)
   const jobSequence=useRef(0)
   const updateCircumstances=v=>{setIsSample(false);setCircumstances(v)}
 
@@ -186,10 +188,13 @@ function App(){
     finally{setBusy(false)}
   }
 
-  const migration={plan,loading:planLoading,error:planError,circumstances,setCircumstances:updateCircumstances,activeId:activeStrategy,setActiveId:setActiveStrategy,checks,toggleCheck,onJobsAction,onRefresh:()=>setPlanNonce(n=>n+1),sample:isSample,setProfile}
+  const migration={openProfile:()=>setProfileOpen(true),plan,loading:planLoading,error:planError,circumstances,setCircumstances:updateCircumstances,activeId:activeStrategy,setActiveId:setActiveStrategy,checks,toggleCheck,onJobsAction,onRefresh:()=>setPlanNonce(n=>n+1),sample:isSample,setProfile}
   if(screen==='onboarding') return <Landing busy={busy} error={error} fileName={fileName} onFile={parseResume} onDemo={()=>{setResume(SAMPLE_RESUME);setFileName('');setProfile(defaultProfile);setCircumstances(sampleCircumstances);setIsSample(true);setChecks({});setActiveStrategy(null);setScreen('review')}} saved={saved} onResume={()=>runIntelligence()}/>
+  const startOver=()=>{setProfileOpen(false);setError('');setScreen('onboarding')}
+  const editResume=()=>{setProfileOpen(false);setScreen('review')}
+  const sheets=<><ProfileSheet open={profileOpen} onClose={()=>setProfileOpen(false)} profile={profile} setProfile={setProfile} c={circumstances} set={updateCircumstances} plan={plan} onEditResume={editResume} onStartOver={startOver}/><SourcesSheet open={sourcesOpen} onClose={()=>setSourcesOpen(false)} sources={sources} busy={busy} onRefresh={()=>{setSourcesOpen(false);runIntelligence()}} renderBadge={s=><StatusBadge source={s}/>} renderInsight={s=><SourceInsight id={s.id} data={data} loading={s.status==='loading'}/>}/></>
   if(screen==='review') return <ResumeReview key={resume?.name+fileName} initialResume={resume||SAMPLE_RESUME} profile={profile} fileName={fileName} catalogue={catalogue} onBack={()=>{setError('');setScreen('onboarding')}} onConfirm={confirmReview}/>
-  return <Dashboard profile={profile} data={data} sources={sources} busy={busy} error={error} activeTab={activeTab} setActiveTab={setActiveTab} refresh={()=>runIntelligence()} edit={()=>setScreen('review')} pricingOpen={pricingOpen} setPricingOpen={setPricingOpen} onJobSearch={searchJobs} migration={migration}/>
+  return <><Dashboard profile={profile} data={data} sources={sources} busy={busy} error={error} activeTab={activeTab} setActiveTab={setActiveTab} refresh={()=>runIntelligence()} openProfile={()=>setProfileOpen(true)} openSources={()=>setSourcesOpen(true)} onJobSearch={searchJobs} migration={migration}/>{sheets}</>
 }
 
 function Brand(){return <div className="brand"><div className="brandmark"><Compass size={20}/></div><span>Pathway</span><span className="beta">LIVE</span></div>}
@@ -200,21 +205,24 @@ function StatusBadge({source}){
   return <span className={`status ${good?'fresh':loading?'loading':'bad'}`}>{loading?<LoaderCircle className="spin"/>:good?<CircleCheck/>:<AlertTriangle/>}{labels[source.status]||'Unknown status'}</span>
 }
 
-function Dashboard({profile,data,sources,busy,error,activeTab,setActiveTab,refresh,edit,pricingOpen,setPricingOpen,onJobSearch,migration}){
-  const tabs=['Overview','My pathway','Jobs','Market','Migration']
+const TABS=[{id:'Home',icon:Compass},{id:'Jobs',icon:BriefcaseBusiness},{id:'Visa',icon:MapPinned}]
+function SourcesButton({sources,onClick}){
+  const live=sources.filter(s=>s.status==='fresh').length,loading=sources.some(s=>s.status==='loading')
+  return <button className={`srcBtn ${loading?'loading':live===sources.length?'ok':'partial'}`} onClick={onClick} title="Data sources">{loading?<LoaderCircle size={14} className="spin"/>:<i/>}{loading?'Checking sources':`${live} of ${sources.length} sources live`}</button>
+}
+function Dashboard({profile,data,sources,busy,error,activeTab,setActiveTab,refresh,openProfile,openSources,onJobSearch,migration}){
+  const hour=new Date().getHours()
+  const first=(profile.name||'').split(' ')[0]
   return <div className="appShell">
-    <aside><Brand/><div className="userCard"><div className="avatar">{profile.name?.charAt(0)||'P'}</div><div><b>{profile.name}</b><span>{profile.occupation}</span></div></div><div className="sideNav">{tabs.map(t=><button key={t} className={activeTab===t?'active':''} onClick={()=>setActiveTab(t)}>{t==='Overview'?<Compass/>:t==='My pathway'?<Zap/>:t==='Jobs'?<BriefcaseBusiness/>:t==='Market'?<TrendingUp/>:<MapPinned/>}{t}</button>)}</div><div className="sideFoot"><span>Intelligence engine</span><b><i></i> Live source mode</b><small>Source failures stay visible.</small></div></aside>
+    <aside><Brand/><button className="userCard" onClick={openProfile} aria-label="Open your profile"><div className="avatar">{profile.name?.charAt(0)||'P'}</div><div><b>Your profile</b><span>{profile.occupationTitle||profile.occupation}</span></div><ChevronRight size={15}/></button><div className="sideNav">{TABS.map(t=><button key={t.id} className={activeTab===t.id?'active':''} onClick={()=>setActiveTab(t.id)}><t.icon/>{t.id}{t.id==='Visa'&&(migration.plan?.deadlines||[]).some(d=>d.severity==='high'&&d.daysAway<=90)&&<em className="navBadge"/>}</button>)}</div></aside>
     <main className="dashboard">
-      <nav className="mobileTabs" aria-label="Sections">{tabs.map(t=><button key={t} className={activeTab===t?'on':''} onClick={()=>setActiveTab(t)}>{t}</button>)}</nav>
-      <header><div><div className="eyebrow">Personal pathway intelligence</div><h1>{`Good ${new Date().getHours()<12?'morning':new Date().getHours()<18?'afternoon':'evening'}, ${profile.name?.split(' ')[0]||'there'}.`}</h1><p>Here is what the Australian market means for your next move right now.</p></div><div className="headerActions"><button className="ghost" onClick={edit}>Edit profile</button><button className="refresh" onClick={refresh} disabled={busy}><RefreshCw className={busy?'spin':''}/> Refresh live data</button></div></header>
-      <div className="freshnessPanel"><div className="freshTitle"><Database/><div><b>Live intelligence check</b><span>{busy?'Pathway is checking sources independently. Insights appear as each source responds.':'Current signals, source status and freshness in one place.'}</span></div></div><div className="sourceStatuses">{sources.map(s=><div className="sourceStatusCard" key={s.id}><div><b>{s.label}</b><span>{s.detail}</span></div><SourceInsight id={s.id} data={data} loading={s.status==='loading'}/><StatusBadge source={s}/></div>)}</div></div>
+      <header><div><h1>{`Good ${hour<12?'morning':hour<18?'afternoon':'evening'}${first?`, ${first}`:''}.`}</h1><p>{activeTab==='Home'?'What to do next, in one place.':activeTab==='Jobs'?'Real adverts compared with your profile.':'Your routes to permanent residence, step by step.'}</p></div><div className="headerActions"><SourcesButton sources={sources} onClick={openSources}/><button className="refresh" onClick={refresh} disabled={busy}><RefreshCw className={busy?'spin':''}/> Refresh</button><button className="mobileAvatar" onClick={openProfile} aria-label="Open your profile">{profile.name?.charAt(0)||'P'}</button></div></header>
+      <nav className="mobileTabs" aria-label="Sections">{TABS.map(t=><button key={t.id} className={activeTab===t.id?'on':''} onClick={()=>setActiveTab(t.id)}>{t.id}</button>)}</nav>
       {error&&<div className="warning wide"><AlertTriangle/>{error}</div>}
-      {<CandidateView data={data} busy={busy} profile={profile} activeTab={activeTab} setActiveTab={setActiveTab} onUpgrade={()=>setPricingOpen(true)} onJobSearch={onJobSearch} migration={migration}/>} 
+      <CandidateView data={data} busy={busy} profile={profile} activeTab={activeTab} setActiveTab={setActiveTab} onJobSearch={onJobSearch} migration={migration}/>
     </main>
-    {pricingOpen&&<SubscriptionModal onClose={()=>setPricingOpen(false)}/>} 
   </div>
 }
-
 
 function SourceInsight({id,data,loading}){
   if(loading && !data?.[id]) return <div className="sourceInsight loadingInsight"><LoaderCircle className="spin"/><span>Retrieving source data…</span></div>
@@ -228,30 +236,13 @@ function SourceInsight({id,data,loading}){
   return <div className="sourceInsight"><strong>{title}</strong><span>{detail}</span></div>
 }
 
-function SubscriptionModal({onClose}){
-  const plans=[
-    {name:'Plus',price:'9.99',tag:'Build your evidence',features:['Personal evidence plan','Priority skill gap actions','Application readiness checklist','Saved pathway progress','Monthly pathway refresh']},
-    {name:'Premium',price:'19.99',tag:'Maximise your pathway',featured:true,features:['Everything in Plus','Unlimited evidence plans','Advanced migration scenario analysis','Deeper job and market matching','Priority live intelligence refresh','Exportable pathway report']}
-  ]
-  return <div className="modalBackdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><div className="pricingModal"><button className="modalClose" onClick={onClose} aria-label="Close"><X/></button><div className="pricingIntro"><span className="kicker">Pathway membership</span><h2>Turn recommendations into an evidence plan</h2><p>Choose the level of guidance you want. Cancel anytime.</p></div><div className="planGrid">{plans.map(plan=><section key={plan.name} className={`planCard ${plan.featured?'featured':''}`}>{plan.featured&&<div className="popular"><Crown/> Most complete</div>}<h3>{plan.name}</h3><div className="price"><b>A${plan.price}</b><span>/ month</span></div><p>{plan.tag}</p><button className={plan.featured?'primary':'planButton'} onClick={()=>alert(`${plan.name} checkout is a demo in this prototype.`)}>Choose {plan.name}</button><div className="featureList">{plan.features.map(f=><span key={f}><Check/>{f}</span>)}</div></section>)}</div><small className="billingNote">Demo pricing only. Production checkout should use a payment provider and explicit recurring billing consent.</small></div></div>
-}
-
 function Skeleton({height=120}){return <div className="skeleton" style={{height}}><div></div><div></div><div></div></div>}
 const SourceNote=({source})=><div className="sourceNote"><Clock3/> {source?.source||'Source pending'} <span>{source?.freshness||'checking'}</span></div>
 
-function CandidateView({data,busy,profile,activeTab,setActiveTab,onUpgrade,onJobSearch,migration}){
-  if(activeTab==='Migration') return <Migration {...migration} profile={profile} jobs={data?.jobs}/>
-  if(!data) return <div className="cardsGrid"><Skeleton height={230}/><Skeleton height={230}/><Skeleton height={230}/><Skeleton height={320}/><Skeleton height={320}/><Skeleton height={320}/></div>
-  const r=data.recommendation||{}
-  if(activeTab==='My pathway') return <><PathwayView r={r}/><div className="singleView"><MigrationMilestones plan={migration.plan} activeId={migration.activeId} checks={migration.checks}/></div></>
-  if(activeTab==='Jobs') return <Jobs jobs={data.jobs} profile={profile} onSearch={onJobSearch} disabled={busy}/>
-  if(activeTab==='Market') return <MarketView data={data}/>
-  return <Overview data={data} profile={profile} setActiveTab={setActiveTab} onUpgrade={onUpgrade} migrationCard={<MigrationSummaryCard plan={migration.plan} activeId={migration.activeId} loading={migration.loading} onOpen={()=>setActiveTab('Migration')}/>}/>
+function CandidateView({data,busy,profile,activeTab,setActiveTab,onJobSearch,migration}){
+  if(activeTab==='Visa') return <Migration {...migration} profile={profile} jobs={data?.jobs}/>
+  if(activeTab==='Jobs') return data?<Jobs jobs={data.jobs} profile={profile} onSearch={onJobSearch} disabled={busy} demand={data.occupation}/>:<div className="cardsGrid"><Skeleton height={230}/><Skeleton height={230}/><Skeleton height={230}/></div>
+  return <Home data={data||{}} profile={profile} plan={migration.plan} planLoading={migration.loading} activeId={migration.activeId} checks={migration.checks} toggleCheck={migration.toggleCheck} setActiveTab={setActiveTab} onJobsAction={migration.onJobsAction} openProfile={migration.openProfile}/>
 }
-
-function Metric({icon,label,value,sub,strong}) {return <div className={`metric ${strong?'strong':''}`}><div className="metricIcon">{icon}</div><span>{label}</span><b>{value}</b><small>{sub}</small></div>}
-function SignalMetric({icon,label,value,sub,facts=[]}) {return <div className="metric signalMetric"><div className="metricIcon">{icon}</div><span>{label}</span><b>{value}</b><small>{sub}</small>{facts.length>0&&<div className="metricFacts">{facts.slice(0,2).map((f,i)=><div key={i}>{f}</div>)}</div>}</div>}
-function PathwayView({r}){return <div className="singleView"><div className="viewTitle"><span className="kicker">Decision support</span><h2>Your recommended pathway</h2><p>The highlighted step changes with your profile evidence. Completed stages reflect evidence Pathway can already establish from the information you provided.</p></div><div className="roadmap">{(r.pathway||[]).map((p,i)=><div className={`roadStep ${p.status||''}`} key={i}><div className="stepNum">{p.status==='complete'?<CircleCheck/>:i+1}</div><div><span>{p.status==='current'?'Current step':p.status==='complete'?'Evidence present':p.horizon}</span><h3>{p.title}</h3><p>{p.detail}</p><button onClick={()=>alert('Detailed checklist is available through Build Evidence Plan in this prototype.')}>Open checklist <ChevronRight/></button></div><div className="confidence">{p.confidence||'High'} confidence</div></div>)}</div></div>}
-function MarketView({data}){return <div className="singleView"><div className="viewTitle"><span className="kicker">Power BI style market lens</span><h2>Understand the market around your occupation</h2></div><div className="marketGrid"><section className="card chartCard wideCard"><h3>Internet vacancy trend</h3><div className="chart tall"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.vacancies?.trend||[]}><CartesianGrid vertical={false} stroke="rgba(20,30,35,.08)"/><XAxis dataKey="month" axisLine={false} tickLine={false}/><YAxis/><Tooltip/><Bar dataKey="value" fill="currentColor" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></div><SourceNote source={data.vacancies}/></section><section className="card"><h3>Occupation signal</h3><div className="bigStat">{data.occupation?.shortage||'Not available'}</div><p>{data.occupation?.shortageNote}</p><hr/><b>{data.occupation?.employment||'Employment data pending'}</b><span className="muted">{data.occupation?.earnings||''}</span><SourceNote source={data.occupation}/></section></div></div>}
 
 createRoot(document.getElementById('root')).render(<App/>)

@@ -20,7 +20,17 @@ export function FitCard({job}){
   </article>
 }
 
-export default function Jobs({jobs,profile,onSearch,disabled=false}){
+function Demand({demand,profile}){
+  const o=demand?.occupationResult
+  const state=o?.state
+  return <section className="card demandCard"><div><span className="kicker">Employer demand · Jobs and Skills Australia</span>
+    {o?<p className="demandLine"><b>{o.occupation}</b> is rated <b>{o.nationalRating||'not assessed'}</b> nationally{state&&o.stateRating?<> and <b>{o.stateRating}</b> in {state}</>:''} on the {demand.oslYear} Occupation Shortage List.</p>
+      :<p className="demandLine">{demand?.status==='unavailable'?'The shortage list could not be loaded right now.':demand?.shortageNote||`No shortage rating matched ${profile.occupationTitle||profile.occupation}.`}</p>}
+    {o?.stateRatings&&<div className="demandStates">{Object.entries(o.stateRatings).map(([st,v])=><span key={st} className={v&&v.includes('hortage')&&!v.startsWith('No')?'short':''}>{st} <b>{v||'n/a'}</b></span>)}</div>}
+  </div>{demand?.sourceUrl&&<a className="evidenceLink" href={demand.downloadUrl||demand.sourceUrl} target="_blank" rel="noreferrer">Source<ExternalLink size={12}/></a>}</section>
+}
+
+export default function Jobs({jobs,profile,onSearch,disabled=false,demand=null}){
   const [role,setRole]=useState(jobs?.query?.role||profile.occupation||'')
   const [location,setLocation]=useState(jobs?.query?.location||profile.location||'Australia')
   const [window,setWindow]=useState(jobs?.query?.dateWindow||'anyTime')
@@ -49,6 +59,7 @@ export default function Jobs({jobs,profile,onSearch,disabled=false}){
     </form><p className="jobSearchHint">Recent searches reuse collected adverts. A new search collects a small sample when collection is enabled.</p>
     {related.length>0&&<div className="relatedRoles"><span>Related roles from your profile</span>{related.map(title=><button type="button" key={title} disabled={disabled||submitting} onClick={()=>search(null,title)}>{title}<ArrowUpRight size={12}/></button>)}</div>}</section>
 
+    <Demand demand={demand} profile={profile}/>
     <div className={`collectionBanner ${jobs?.status==='stale'?'older':''}`} aria-live="polite">{collecting?<LoaderCircle size={17} className="spin"/>:<Clock3 size={17}/>}<div><b>{collecting?'Collecting adverts for this search':available?`${jobs.query?.role||role} · ${jobs.query?.location||location}`:'Waiting for a usable collection'}</b><p>{jobs?.note||'Search for a role and location to begin.'}</p>{jobs?.collectedAt&&<small>Collected {dateLabel(jobs.collectedAt,true)} · {jobs.cached?'Reused collection':'Latest collection'} · One source · Search radius up to 25 miles (about 40 km)</small>}{jobs?.collectionNote&&<p>{jobs.collectionNote}</p>}{jobs?.seedNote&&<small>{jobs.seedNote}</small>}</div></div>
 
     {available?<>

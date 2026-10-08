@@ -362,3 +362,64 @@
 @media(max-width:1300px){.circGrid.four{grid-template-columns:1fr 1fr}}
 @media(max-width:640px){.circGrid.four{grid-template-columns:1fr}.msListHead{flex-direction:column;align-items:flex-start}.msHead{flex-direction:column;align-items:flex-start}}
 .migSumFacts .lvl{white-space:normal;text-align:left}
+
+/* ===== Home ===== */
+.homeView{display:flex;flex-direction:column;gap:16px;margin-top:22px}
+.homeMissing{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid #f0d9ae;background:#fdf7ea;color:#6f5420;border-radius:14px;padding:12px 16px;font-size:13px}
+.homeMissing svg{flex:none;color:#c0841f}.homeMissing span{flex:1}.homeMissing em{font-style:normal;font-weight:800;display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.homeNext{position:relative;overflow:hidden;background:linear-gradient(135deg,#0f2b25,#0b5747);color:#eef7f3;border-radius:22px;padding:28px 30px}
+.homeNext .kicker{color:#9fe0c4}.homeNext h2{font:800 30px/1.15 'Manrope';margin:10px 0 8px;color:#fff;letter-spacing:-.02em;max-width:760px}
+.homeWhen{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13.5px;color:#cfe5dc;margin:0}.homeWhen b{color:#fff}
+.homeTask{display:flex;gap:10px;align-items:center;margin:18px 0 0;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 14px;font-size:14px;max-width:640px;cursor:pointer}
+.homeTask input{width:18px;height:18px;accent-color:#7fd6b0;flex:none}
+.homeActions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.homeActions .primary{background:#7fd6b0;color:#0c2b23;text-decoration:none}
+.homeGhost{border:1px solid rgba(255,255,255,.3);background:none;color:#fff;border-radius:10px;padding:11px 15px;font-weight:700}
+.homeTiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.homeTile{position:relative;text-align:left;background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px;color:inherit;transition:.15s}
+.homeTile:hover{border-color:#9ed3bd;transform:translateY(-1px)}
+.homeTile span{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#6a7d72}
+.homeTile strong{font:800 32px 'Manrope';color:#102a24;letter-spacing:-.02em}
+.homeTile.warn strong{color:#b45a1c}
+.homeTile small{font-size:12px;color:#6a7d72;line-height:1.45}
+.homeTile em{position:absolute;top:16px;right:16px;font-style:normal;font-size:11px;font-weight:700;color:#0c6b58;display:flex;align-items:center;gap:2px;opacity:0;transition:.15s}
+.homeTile:hover em{opacity:1}
+.homeGrid{display:grid;grid-template-columns:1fr 1.25fr;gap:16px;align-items:start}
+.homeGrid .card{padding:22px}.homeGrid .cardHead h2{font:800 18px 'Manrope'}
+.homeStep{display:flex;gap:14px;align-items:center;padding:12px 0;border-top:1px solid #edf1ec}
+.homeStep b{font-size:13.5px;display:block}.homeStep small{font-size:11.5px;color:#6a7d72}
+.homeDate{width:48px;height:48px;flex:none;border-radius:12px;background:#f2f5f3;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:800;text-transform:uppercase;color:#6a7d72}
+.homeDate b{font:800 17px/1 'Manrope';color:#132522}
+.homeStep.first .homeDate{background:#0c6b58;color:#cfeee0}.homeStep.first .homeDate b{color:#fff}
+.homeJobs .listingGrid{grid-template-columns:1fr}.homeJobs .collectionNote{display:none}
+@media(max-width:1000px){.homeGrid{grid-template-columns:1fr}}
+@media(max-width:640px){.homeTiles{grid-template-columns:1fr}.homeNext{padding:22px 18px}.homeNext h2{font-size:23px}}
+
+/* ===== Shell ===== */
+.appShell aside .userCard{width:100%;background:none;border-left:0;border-right:0;color:#fff;text-align:left;cursor:pointer;border-radius:0}
+.appShell aside .userCard:hover{background:rgba(255,255,255,.04)}
+.appShell aside .userCard>svg{margin-left:auto;color:#8fb3a6;flex:none}
+.sideNav button{position:relative;font-size:13.5px!important;padding:11px 12px!important}
+.navBadge{position:absolute;right:12px;top:50%;width:8px;height:8px;margin-top:-4px;border-radius:50%;background:#e4723b}
+.dashboard header{align-items:center}
+.dashboard header h1{margin:0 0 4px}
+.headerActions{align-items:center}
+.srcBtn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 13px;font-size:12.5px;font-weight:700;color:#41554c}
+.srcBtn i{width:8px;height:8px;border-radius:50%;background:#d39a3a}
+.srcBtn.ok i{background:#2fb383}.srcBtn:hover{border-color:#9ed3bd}
+.mobileAvatar{display:none;width:40px;height:40px;border-radius:50%;border:0;background:#102a24;color:#9fe0c4;font:800 15px 'Manrope'}
+.answersBanner{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid #f0d9ae;background:#fdf7ea;color:#6f5420;border-radius:14px;padding:12px 16px;font-size:13px}
+.answersBanner>svg{flex:none;color:#c0841f}.answersBanner span{flex:1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.answersBanner em{font-style:normal;font-size:11px;font-weight:700;background:#fff;border:1px solid #f0d9ae;border-radius:999px;padding:2px 8px}
+.answersBanner strong{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:#0c6b58}
+.sampleLine{display:flex;align-items:center;gap:6px;margin:-6px 0 0;font-size:12px;color:#6a7d72}
+.phProgress{display:flex;align-items:center;gap:12px;font-size:12.5px;font-weight:700;color:#41554c}.phProgress .prog{flex:1;max-width:320px;margin:0}
+.demandCard{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}
+.demandLine{font-size:13.5px;line-height:1.55;margin:8px 0 10px;color:#2f443b}
+.demandStates{display:flex;flex-wrap:wrap;gap:6px}
+.demandStates span{font-size:11.5px;background:#f2f5f3;border-radius:8px;padding:4px 8px;color:#55665e}.demandStates span b{color:#2f443b;font-weight:700}
+.demandStates span.short{background:#e6f5ef}.demandStates span.short b{color:#0b5a49}
+@media(max-width:1050px){.mobileAvatar{display:grid;place-items:center}}
+@media(max-width:700px){.dashboard header{align-items:flex-start}.headerActions{width:100%;justify-content:space-between}.srcBtn{font-size:11.5px}.demandCard{flex-direction:column}}
+.appShell aside .userCard>div:nth-child(2){min-width:0;display:flex;flex-direction:column;gap:2px;flex:1}
+@media(max-width:700px){.headerActions{gap:6px}.refresh{padding:9px 11px!important;font-size:0!important;gap:0!important}.refresh svg{width:17px;height:17px}.mobileTabs{margin:14px 0 4px!important}.homeDate{font-size:9px}}

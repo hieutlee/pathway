@@ -2,31 +2,23 @@ import assert from 'node:assert/strict'
 import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {createServer} from 'vite'
+import fs from 'node:fs'
 
 const server=await createServer({server:{middlewareMode:true},appType:'custom'})
 try {
-  const {default:Overview}=await server.ssrLoadModule('/src/Overview.jsx')
-  const profile={occupation:'Test Engineer',location:'Brisbane, QLD'}
-  const recommendation={profileCompleteness:{completed:0,total:8,checks:[{id:'occupation',label:'Target occupation',present:false}],explanation:'Counts supplied fields only.'}}
-  const render=data=>renderToStaticMarkup(React.createElement(Overview,{data,profile,setActiveTab:()=>{},onUpgrade:()=>{}}))
-  const missing=render({recommendation,jobs:{status:'not_configured',count:null,roles:[],note:'Connection required.'},migration:{status:'unavailable',note:'Tables unavailable.'},occupation:{status:'unavailable',shortageNote:'Workbook unavailable.'}})
-  assert.ok(missing.includes('0 of 8'))
-  assert.ok(missing.includes('Not connected'))
-  assert.ok(missing.includes('Tables unavailable.'))
-  assert.ok(missing.includes('Workbook unavailable.'))
-  for(const placeholder of ['Pathway readiness','Current OSL checked','Current round published','% fit','+18']) assert.ok(!missing.includes(placeholder))
-  const good=render({recommendation,jobs:{status:'fresh',count:0,scannedCount:100,roles:[],note:'No matching listings.'},migration:{latestRound:{date:'4 June 2026',invitations:10000,minimumPoints:95,matchedOccupation:'Test Engineer'},occupationNote:'Historical result only.'},occupation:{oslYear:2025,occupationResult:{occupation:'Test Engineer',classification:'ANZSCO',code:'233999',nationalRating:'No shortage',state:'QLD',stateRating:'Regional shortage',stateRatings:{QLD:'Regional shortage',NSW:'No shortage'}}}})
-  assert.ok(good.includes('No matches in this collection'))
-  assert.ok(good.includes('95 points'))
-  assert.ok(good.includes('10,000'))
-  assert.ok(good.includes('Regional shortage'))
-  assert.ok(good.includes('No shortage'))
-  const listing=render({jobs:{status:'partial',count:1,scannedCount:1,roles:[{title:'Test Engineer',company:'Example Co',location:'QLD',url:'https://jobs.example.org/123',matchedSkills:['C++'],reason:'Skills mentioned: C++.'}]}})
-  assert.ok(listing.includes('href="https://jobs.example.org/123"'))
-  assert.ok(listing.includes('collection time is unknown'))
-  assert.ok(listing.includes('Skills mentioned: C++.'))
-  assert.ok(!listing.includes('82%'))
-  console.log('Overview rendering checks passed: missing data, zero count, official facts and real listing links.')
+  const {default:Home,JobResults}=await server.ssrLoadModule('/src/Overview.jsx')
+  const plan=JSON.parse(fs.readFileSync('scripts/fixtures/plan.json','utf8'))
+  const profile={occupation:'Mechatronics Engineer',location:'Brisbane, QLD'}
+  const render=(data,p=plan)=>renderToStaticMarkup(React.createElement(Home,{data,profile,plan:p,planLoading:false,activeId:null,checks:{},toggleCheck:()=>{},setActiveTab:()=>{},onJobsAction:()=>{},openProfile:()=>{}}))
+  const html=render({jobs:{status:'not_configured',count:null,roles:[],note:'Connection required.'}})
+  const next=plan.strategies[0].milestones.find(m=>m.status!=='done')
+  for(const text of ['Your next step',next.title,'Visa days left','Points today','Matching jobs','Not collected','Next steps','Roles for you']) assert.ok(html.includes(text.replace("'",'&#x27;')),text)
+  for(const removed of ['Profile checklist','Invitation evidence','Occupation shortage','Build Evidence Plan','Current blockers','Your pathway map']) assert.ok(!html.includes(removed),removed)
+  const withMissing=render({},{...plan,missing:[{field:'dob',label:'Date of birth'}]})
+  assert.ok(withMissing.includes('1 answer would sharpen your plan'))
+  const listing=renderToStaticMarkup(React.createElement(JobResults,{jobs:{status:'fresh',count:1,roles:[{title:'Test Engineer',company:'Example Co',location:'QLD',url:'https://jobs.example.org/123',reason:'Skills mentioned: C++.'}],note:''},limit:3}))
+  assert.ok(listing.includes('href="https://jobs.example.org/123"')&&!listing.includes('82%'))
+  console.log('Home rendering checks passed: one next step, three numbers, next steps, top jobs, no repeated cards.')
 } finally {
   await server.close()
 }
