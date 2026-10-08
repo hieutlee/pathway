@@ -32,6 +32,20 @@ const STORE_KEY='pathway.state.v3'
 function loadSaved(){try{const raw=localStorage.getItem(STORE_KEY);return raw?JSON.parse(raw):null}catch(e){return null}}
 function save(state){try{localStorage.setItem(STORE_KEY,JSON.stringify(state))}catch(e){}}
 
+function resumeEvidence(r){
+  if(!r) return []
+  const out=[],add=(source,text)=>{if(text&&text.trim()) out.push({source:source.slice(0,150),text:text.slice(0,2400)})}
+  ;(r.experience||[]).filter(e=>e.included!==false).forEach(e=>add(`Work · ${e.title||'Role'}${e.org?` at ${e.org}`:''}`,`${e.title||''}. ${(e.bullets||[]).join(' ')}`))
+  ;(r.projects||[]).forEach(p=>add(`Project · ${p.name}`,`${(p.tools||[]).join(', ')}. ${(p.bullets||[]).join(' ')}`))
+  ;(r.volunteering||[]).forEach(v=>add(`Volunteering · ${v.title||v.org}`,`${v.title||''}. ${(v.bullets||[]).join(' ')}`))
+  ;(r.education||[]).filter(e=>e.level!=='secondary').forEach(e=>add(`Degree · ${e.degree}`,`${e.degree} ${e.major||''}. ${(e.notes||e.achievements||[]).join(' ')}`))
+  ;(r.publications||[]).forEach(p=>add('Publication',p))
+  if(r.summary) add('Your summary',r.summary)
+  ;(r.certifications||[]).forEach(c=>add(`Certification · ${c.issuer||c.name}`,c.name))
+  ;(r.skillGroups||[]).forEach(g=>add(`Skills · ${g.name}`,`${g.name}: ${(g.items||[]).join(', ')}`))
+  return out.slice(0,80)
+}
+
 function jobsSummary(jobs){
   if(!jobs||typeof jobs.count!=='number') return null
   const wr=jobs.market?.all?.workRights?.counts||{}
@@ -90,14 +104,14 @@ function App(){
     return ()=>{clearTimeout(timer);controller.abort()}
   },[screen,profile,circumstances,jobSignalKey,planNonce])
   function toggleCheck(id){setChecks(prev=>{const next={...prev};if(next[id]) delete next[id]; else next[id]=new Date().toISOString();return next})}
-  function onJobsAction(action){setActiveTab('Jobs');searchJobs({role:action.role||profile.occupation,location:action.location||profile.location,dateWindow:'anyTime'})}
+  function onJobsAction(action){setActiveTab('Jobs');searchJobs({role:action.role||profile.occupation,location:action.location||profile.location,dateWindow:'pastWeek'})}
 
   function acceptJobs(payload){
     setData(prev=>({...prev,jobs:payload}))
     setSources(prev=>prev.map(s=>s.id==='jobs'?{...s,status:payload.status,cached:payload.cached,checkedAt:payload.checkedAt,freshness:payload.freshness}:s))
   }
   function jobBody(query,startIfMissing,p=profile){
-    return {...query,startIfMissing,profile:{occupation:p.occupation||'',skills:p.skills||[],experienceYears:p.experienceYears===''||p.experienceYears==null?null:Number(p.experienceYears)}}
+    return {...query,startIfMissing,profile:{occupation:query.role||p.occupation||'',skills:(p.skills||[]).slice(0,150),experienceYears:p.experienceYears===''||p.experienceYears==null?null:Number(p.experienceYears),visa:p.visa||'',evidence:resumeEvidence(p.resume)}}
   }
   async function fetchJobs(query,startIfMissing=true,signal){
     const res=await fetch(`${API}/jobs/search`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(jobBody(query,startIfMissing)),signal:signal||AbortSignal.timeout(90000)})
@@ -152,8 +166,9 @@ function App(){
   }
 
   async function runIntelligence(p=profile){
-    ++jobSequence.current; setScreen('dashboard'); setBusy(true); setData(null); setSources(initialSources.map(s=>({...s,status:'loading'})))
-    const order=['migration','occupation','vacancies','jobs']
+    ++jobSequence.current; setScreen('dashboard'); setBusy(true); setData(null); setSources(initialSources.map(s=>({...s,status:s.id==='jobs'?'idle':'loading'})))
+    // Jobs are searched on demand from the Jobs tab, so the desired role is never assumed.
+    const order=['migration','occupation','vacancies']
     try{
       const tasks=order.map(async (key,i)=>{
         setSources(prev=>prev.map(s=>s.id===key?{...s,status:'loading'}:s))
@@ -192,7 +207,7 @@ function App(){
   if(screen==='onboarding') return <Landing busy={busy} error={error} fileName={fileName} onFile={parseResume} onDemo={()=>{setResume(SAMPLE_RESUME);setFileName('');setProfile(defaultProfile);setCircumstances(sampleCircumstances);setIsSample(true);setChecks({});setActiveStrategy(null);setScreen('review')}} saved={saved} onResume={()=>runIntelligence()}/>
   const startOver=()=>{setProfileOpen(false);setError('');setScreen('onboarding')}
   const editResume=()=>{setProfileOpen(false);setScreen('review')}
-  const sheets=<><ProfileSheet open={profileOpen} onClose={()=>setProfileOpen(false)} profile={profile} setProfile={setProfile} c={circumstances} set={updateCircumstances} plan={plan} onEditResume={editResume} onStartOver={startOver}/><SourcesSheet open={sourcesOpen} onClose={()=>setSourcesOpen(false)} sources={sources} busy={busy} onRefresh={()=>{setSourcesOpen(false);runIntelligence()}} renderBadge={s=><StatusBadge source={s}/>} renderInsight={s=><SourceInsight id={s.id} data={data} loading={s.status==='loading'}/>}/></>
+  const sheets=<><ProfileSheet catalogue={catalogue} open={profileOpen} onClose={()=>setProfileOpen(false)} profile={profile} setProfile={setProfile} c={circumstances} set={updateCircumstances} plan={plan} onEditResume={editResume} onStartOver={startOver}/><SourcesSheet open={sourcesOpen} onClose={()=>setSourcesOpen(false)} sources={sources} busy={busy} onRefresh={()=>{setSourcesOpen(false);runIntelligence()}} renderBadge={s=><StatusBadge source={s}/>} renderInsight={s=><SourceInsight id={s.id} data={data} loading={s.status==='loading'}/>}/></>
   if(screen==='review') return <ResumeReview key={resume?.name+fileName} initialResume={resume||SAMPLE_RESUME} profile={profile} fileName={fileName} catalogue={catalogue} onBack={()=>{setError('');setScreen('onboarding')}} onConfirm={confirmReview}/>
   return <><Dashboard profile={profile} data={data} sources={sources} busy={busy} error={error} activeTab={activeTab} setActiveTab={setActiveTab} refresh={()=>runIntelligence()} openProfile={()=>setProfileOpen(true)} openSources={()=>setSourcesOpen(true)} onJobSearch={searchJobs} migration={migration}/>{sheets}</>
 }

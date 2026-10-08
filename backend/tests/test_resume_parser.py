@@ -108,3 +108,11 @@ def test_one_line_role_layout():
     assert r["experience"][1]["where"] == "overseas"
     assert r["education"][0]["level"] == "masters_coursework"
     assert r["suggestions"][0]["field"] == "ict"
+
+
+def test_skills_inferred_when_no_skills_section():
+    text = PDF_STYLE.split("Technical Skills")[0] + "Experience" + PDF_STYLE.split("Experience",1)[1]
+    r = P.parse(text, TODAY)
+    inferred = [g for g in r["skillGroups"] if g.get("inferred")]
+    assert inferred and "PLC" in inferred[0]["items"]
+    assert any("concluded" in w for w in r["warnings"])

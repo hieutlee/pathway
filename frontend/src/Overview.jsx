@@ -20,8 +20,8 @@ export function SourceFooter({source}){
 export function JobResults({jobs,limit=4}){
   const roles=jobs?.roles||[]
   if(!roles.length){
-    const title=!jobs?'Loading vacancies':jobs.status==='loading'?'Collecting adverts':jobs.status==='not_configured'?'Connect a job source':jobs.count===0?'No matches in this collection':'Vacancy results unavailable'
-    return <div className="dataEmpty"><BriefcaseBusiness size={26}/><b>{title}</b><p>{jobs?.note||'Waiting for the job provider to respond.'}</p></div>
+    const title=!jobs?'No job search yet':jobs.status==='loading'?'Collecting adverts':jobs.status==='not_configured'?'Connect a job source':jobs.count===0?'No matches in this collection':'Vacancy results unavailable'
+    return <div className="dataEmpty"><BriefcaseBusiness size={26}/><b>{title}</b><p>{jobs?.note||'Open Jobs and search a role. Results are compared with your resume and ranked by whether you can apply.'}</p></div>
   }
   return <><div className="listingGrid">{roles.slice(0,limit).map((job,index)=><article className="realListing" key={job.url||index}>
     <div className="listingHeading"><div className="jobLogo">{job.company?.charAt(0)||'J'}</div><div><a href={job.url} target="_blank" rel="noreferrer">{job.title}<ExternalLink size={13}/></a><span>{job.company||'Employer not listed'} · {job.location}</span></div></div>
@@ -48,7 +48,7 @@ export default function Home({data,profile,plan,planLoading,activeId,checks,togg
   const target=plan?.strategies?.find(s=>s.id==='189')?.points?.target
   const pts=plan?.points?.total
   const jobs=data?.jobs
-  const jobsValue=typeof jobs?.count==='number'?String(jobs.count):jobs?.status==='loading'?'Collecting':'Not collected'
+  const jobsValue=typeof jobs?.count==='number'?String(jobs.count):jobs?.status==='loading'?'Collecting':'Search'
   const missing=plan?.missing||[]
   return <div className="homeView">
     {missing.length>0&&<button className="homeMissing" onClick={openProfile}><AlertTriangle size={16}/><span><b>{missing.length} answer{missing.length>1?'s':''} would sharpen your plan:</b> {missing.slice(0,3).map(m=>m.label.toLowerCase()).join(', ')}</span><em>Answer now<ChevronRight size={14}/></em></button>}

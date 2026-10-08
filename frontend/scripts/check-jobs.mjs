@@ -5,25 +5,28 @@ import {createServer} from 'vite'
 
 const server=await createServer({server:{middlewareMode:true},appType:'custom'})
 try{
-  const {default:Jobs}=await server.ssrLoadModule('/src/Jobs.jsx')
-  const profile={occupation:'Mechatronics Engineer',location:'Brisbane, QLD',experienceYears:1,skills:['Python'],roleCandidates:[{title:'Automation Engineer'}]}
+  const {default:Jobs,prettyLocation}=await server.ssrLoadModule('/src/Jobs.jsx')
+  const profile={occupation:'Mechatronics Engineer',location:'Brisbane, QLD',experienceYears:1,skills:['Python'],roleCandidates:[{title:'Mechatronics Engineer'},{title:'Controls Engineer'}]}
   const render=jobs=>renderToStaticMarkup(React.createElement(Jobs,{jobs,profile,onSearch:()=>{}}))
-  const missing=render({status:'not_configured',count:null,roles:[],note:'Connect Apify to collect adverts.'})
-  assert.ok(missing.includes('Market evidence is not available yet'))
-  assert.ok(!missing.includes('0 named employers'))
-  assert.ok(missing.includes('Related roles from your profile'))
-  const pending=render({status:'loading',collectionState:'running',count:null,roles:[],note:'Collecting this role and location.'})
-  assert.ok(pending.includes('Collecting adverts for this search'))
-  assert.ok(!pending.includes('No adverts at this level'))
-  const market={count:0,levels:['Junior','Mid level','Senior','Leadership','Unspecified'].map(level=>({level,count:0})),companies:[],companyCount:0,unknownCompanyCount:0,skills:[],describedCount:0,salaryDisclosedCount:0,salaries:[],experienceExamples:[],juniorDemand:{count:0,totalJunior:0,examples:[]},aiMentions:{count:0,examples:[]}}
-  const query={role:'Mechatronics Engineer',location:'Brisbane, QLD, Australia',dateWindow:'anyTime'}
-  const empty=render({status:'fresh',count:0,query,roles:[],market:{all:market,byLevel:{}},note:'No adverts in this collection.'})
-  assert.ok(empty.includes('No adverts at this level in the collected sample'))
-  assert.ok(empty.includes('Salary')||empty.includes('salary'))
-  assert.ok(empty.includes('not treated as zero'))
-  const job={id:'test',title:'Junior Engineer',url:'https://jobs.example.org/1',company:'Test employer',location:'Brisbane',salary:'AUD 90,000 per year',seniority:{level:'Junior',basis:'Advert title',evidence:'Junior Engineer'},reason:'Your Python skill is mentioned.',fit:{label:'Stretch',supportedSkills:['Python'],notEvidencedSkills:['PLC'],explanation:'Review the actual requirements.'},experienceRequirement:{minimum:3,evidence:'Minimum 3 years of experience required.'},skillMentions:[{skill:'Python',evidence:'Python skills required.'}]}
-  const known=render({status:'stale',count:1,query,collectedAt:'2026-10-01T12:00:00Z',roles:[job],market:{all:{...market,count:1,companyCount:1,companies:[{name:'Test employer',count:1}],salaryDisclosedCount:1,salaries:[{currency:'AUD',period:'year',basis:'Excludes super',count:1,min:90000,max:110000}],juniorDemand:{count:1,totalJunior:1,examples:[{title:job.title,url:job.url,evidence:job.experienceRequirement.evidence}]}},byLevel:{}},note:'Older sample. Not the total number of vacancies.'})
-  for(const text of ['Stretch','Python','PLC','Test employer','90,000 to 110,000','Excludes super','Minimum 3 years','AI caused a change','Qualifications, licences and work rights','href="https://jobs.example.org/1"']) assert.ok(known.includes(text),text)
-  assert.ok(!known.includes('% fit'))
-  console.log('Jobs rendering checks passed: pending, unconfigured, valid zero, seniority, employers, salary bases, fit evidence and sample limitations.')
+  const empty=render(null)
+  assert.ok(empty.includes('Suggested from your resume')&&empty.includes('Controls Engineer'))
+  assert.ok(/name="?"?[^>]*value=""/.test(empty)||empty.includes('placeholder="e.g. Mechatronics Engineer"'),'role is suggested, not prefilled')
+  assert.ok(empty.includes('Brisbane, Queensland'),'location shown without country')
+  assert.ok(empty.includes('Latest (24 hours)')&&empty.includes('Last week')&&!empty.includes('Any time'))
+  assert.equal(prettyLocation('Brisbane, QLD, Australia'),'Brisbane, Queensland')
+  assert.equal(prettyLocation('Sydney, NSW'),'Sydney, New South Wales')
+  const lv=['Junior','Mid level','Senior','Leadership','Unspecified']
+  const ms=(n)=>({count:n,levels:lv.map(level=>({level,count:level==='Junior'?n:0})),companies:[],companyCount:1,unknownCompanyCount:0,
+    skills:[{skill:'PLC',count:2,examples:[{title:'Controls Engineer',company:'A',url:'https://x.example/1',evidence:'PLC programming required'}]},{skill:'SCADA',count:1,examples:[]}],
+    describedCount:n,salaryDisclosedCount:0,salaries:[],experienceExamples:[],juniorDemand:{count:0,totalJunior:0,examples:[]},aiMentions:{count:0,examples:[]},
+    workRights:{counts:{citizen_pr:1,clearance:0,no_sponsorship:0,sponsorship:0,work_rights:0,not_stated:1},examples:[]}})
+  const job=(id,tier,label)=>({id,title:`Role ${id}`,url:`https://x.example/${id}`,company:`Co ${id}`,location:'Brisbane, Queensland, Australia',seniority:{level:'Junior'},
+    fit:{label:'Good match',haveCount:1,transferableCount:1,gapCount:0,reasons:['1 of 2 advertised skills are on your resume.'],eligibility:{tier,label,reason:'r',evidence:'Applicants must be Australian Citizens'},
+      skills:[{skill:'PLC',status:'have',reason:'Project · Pump Station mentions PLC.'},{skill:'SCADA',status:'transferable',reason:'Transferable: Project shows WinCC, which builds SCADA platforms.'}]}})
+  const html=render({status:'fresh',count:2,query:{role:'Controls Engineer',location:'Brisbane, QLD, Australia',dateWindow:'pastWeek'},collectedAt:'2026-10-08T00:00:00Z',
+    roles:[job(1,0,'No restriction stated'),job(2,2,'Citizens or PR only')],market:{all:ms(2),byLevel:{Junior:ms(2),'Mid level':ms(0),Senior:ms(0)}},
+    skillStatus:{PLC:{status:'have',reason:'Project · Pump Station mentions PLC.'},SCADA:{status:'transferable',reason:'Transferable'}},note:'2 adverts'})
+  for(const t of ['What employers ask for in Controls Engineer adverts','Mid-level','You can apply','Citizens, PR or clearance only','Transferable: Project shows WinCC','skillChip have','skillChip transferable','Who can apply']) assert.ok(html.includes(t),t)
+  for(const t of ['Who is hiring','Leadership']) assert.ok(!html.includes(t),t)
+  console.log('Jobs rendering checks passed: suggested role, Australian locations, date windows, level filter, market chart, eligibility groups and reasoned skill chips.')
 }finally{await server.close()}

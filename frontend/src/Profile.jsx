@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from 'react'
 import {X, ChevronDown, ChevronUp, FileText, Lock, Languages, BriefcaseBusiness, Heart, Info, Pencil, RotateCcw, Database} from 'lucide-react'
 import './profile.css'
+import {VisaSelect} from './ResumeReview'
 
 const fmtYears=y=>{const m=Math.round((Number(y)||0)*12);if(!m) return 'None yet';const a=Math.floor(m/12),b=m%12;return [a?`${a} yr${a>1?'s':''}`:'',b?`${b} mo${b>1?'s':''}`:''].filter(Boolean).join(' ')}
 const PARTNER_OPTS=[['','Select'],['single','Single'],['partner_citizen_pr','Partner is an Australian citizen or PR'],['partner_skilled','Partner: skilled (assessment + competent English)'],['partner_competent_english','Partner: competent English only'],['partner_other','Partner: none of the above']]
@@ -21,24 +22,25 @@ export function Sheet({open,onClose,title,children,wide}){
   return <div className="sheetBackdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><aside className={`sheet ${wide?'wide':''}`} role="dialog" aria-modal="true" aria-label={title}><button className="sheetClose" onClick={onClose} aria-label="Close"><X size={18}/></button>{children}</aside></div>
 }
 
-export function ProfileSheet({open,onClose,profile,setProfile,c,set,plan,onEditResume,onStartOver}){
+export function ProfileSheet({open,onClose,profile,setProfile,c,set,plan,onEditResume,onStartOver,catalogue=[]}){
   const [more,setMore]=useState(false)
   const miss=new Set((plan?.missing||[]).map(m=>m.field))
   const s=(k,v)=>set(prev=>({...prev,[k]:v}))
   const ctx=plan?.context||{}
   const employer=['yes','offer','sponsoring','interested'].includes(c.employer)?'yes':['no','none'].includes(c.employer)?'no':''
   const r=profile.resume
-  const post=(Number(c.auExperienceYears)||0)+(Number(c.overseasExperienceYears)||0)
+  const suggested=(r?.suggestions||[])
+  const all=catalogue.length?catalogue:suggested
+  const pickOcc=title=>{const o=[...suggested,...all].find(x=>x.title===title);if(!o) return
+    setProfile(p=>({...p,occupation:o.title,occupationTitle:o.title,anzsco:o.anzsco,occupationField:o.field,occupationSuggested:false,careerFamily:o.field}))
+    set(prev=>({...prev,fieldOfStudy:o.field}))}
   return <Sheet open={open} onClose={onClose} title="Profile">
     <div className="pfHead"><div className="pfAvatar">{(profile.name||'P').charAt(0)}</div><div><h2>{profile.name||'Your profile'}</h2><p>{[profile.occupationTitle||profile.occupation,profile.location].filter(Boolean).join(' · ')}</p></div></div>
 
     <section className="pfCard">
       <div className="pfCardHead"><h3><FileText size={16}/>From your resume</h3><button className="pfLink" onClick={onEditResume}><Pencil size={13}/>Review details</button></div>
       <dl className="pfFacts">
-        <div><dt>Occupation</dt><dd>{profile.occupationTitle||profile.occupation||'Not set'}</dd></div>
-        {ctx.assessor?.name&&<div><dt>Assessed by</dt><dd>{ctx.assessor.name}</dd></div>}
-        <div><dt>Relevant experience</dt><dd>{fmtYears(profile.experienceYears)}</dd></div>
-        <div><dt>After graduating</dt><dd>{fmtYears(post)}</dd></div>
+        <div><dt>Work experience</dt><dd>{fmtYears(profile.experienceYears)}</dd></div>
         <div><dt>Qualification</dt><dd>{profile.education||'Not set'}</dd></div>
         {r&&<div><dt>Projects</dt><dd>{r.projects?.length||0}</dd></div>}
         <div><dt>Visa</dt><dd>{profile.visa||'Not set'}</dd></div>
@@ -48,7 +50,16 @@ export function ProfileSheet({open,onClose,profile,setProfile,c,set,plan,onEditR
     <section className="pfCard">
       <div className="pfCardHead"><h3><Lock size={16}/>Answers for your visa plan</h3>{(plan?.missing||[]).length>0&&<span className="pfBadge">{plan.missing.length} needed</span>}</div>
       <p className="pfIntro">Things a resume cannot show. Each answer updates your plan straight away and is saved on this device.</p>
+      <div className="pfGroup"><h4>Occupation</h4>
+        <F label="Occupation for your visa plan" hint={`${profile.occupationSuggested?'Suggested from your resume. ':''}Decides your skills assessor${ctx.assessor?.name?` (${ctx.assessor.name})`:''} and which occupation lists apply. It does not limit your job search.`}>
+          <select value={profile.occupationTitle||profile.occupation||''} onChange={e=>pickOcc(e.target.value)}>
+            <option value="">Choose an occupation</option>
+            {suggested.length>0&&<optgroup label="Suggested from your resume">{suggested.map(o=><option key={'s'+o.title} value={o.title}>{o.title}</option>)}</optgroup>}
+            <optgroup label="All occupations">{all.filter(o=>!suggested.some(x=>x.title===o.title)).map(o=><option key={o.title} value={o.title}>{o.title}</option>)}</optgroup>
+          </select></F>
+      </div>
       <div className="pfGroup"><h4>You</h4>
+        <F label="Current visa or status" missing={!profile.visa}><VisaSelect value={profile.visa} onChange={v=>setProfile(p=>({...p,visa:v,detectedVisa:v}))}/></F>
         <div className="pfTwo"><F label="Visa expiry" missing={miss.has('visaExpiry')}><input type="date" value={profile.visaExpiry||''} onChange={e=>setProfile(p=>({...p,visaExpiry:e.target.value}))}/></F><F label="Date of birth" missing={miss.has('dob')}><input type="date" value={c.dob||''} onChange={e=>s('dob',e.target.value)}/></F></div>
         <F label="Relationship" missing={miss.has('partner')}><Sel value={c.partner} onChange={v=>s('partner',v)} opts={PARTNER_OPTS}/></F>
         {c.partner==='partner_citizen_pr'&&<div className="pfTwo"><F label="Relationship type"><Sel value={c.partnerRelationship} onChange={v=>s('partnerRelationship',v)} opts={[['','Select'],['married','Married'],['registered','Registered'],['de_facto','De facto']]}/></F><F label="Months together"><Num value={c.relationshipMonths} onChange={v=>s('relationshipMonths',v)}/></F></div>}

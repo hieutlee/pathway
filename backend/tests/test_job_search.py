@@ -84,7 +84,7 @@ async def test_shared_market_personal_fit_and_no_profile_storage(settings):
     experienced=await search(settings,provider,profile={"skills":["Python","PLC","PRIVATE_UNIQUE_SKILL"],"experienceYears":5})
     assert junior["market"]==experienced["market"]
     assert junior["roles"][0]["fit"]["label"]=="Stretch"
-    assert experienced["roles"][0]["fit"]["label"]=="Strong evidence alignment"
+    assert experienced["roles"][0]["fit"]["label"]=="Strong match"
     assert provider.starts==1
     assert b"PRIVATE_UNIQUE_SKILL" not in open(settings.db_path,"rb").read()
 
@@ -260,4 +260,4 @@ async def test_http_endpoint_rejects_invalid_inputs_and_ignores_private_profile_
         assert bad.status_code==422
         ok=await client.post("/api/jobs/search",json={"role":"Engineer","location":"Brisbane","profile":{"name":"PRIVATE NAME","resume":"PRIVATE RESUME","skills":["Python"],"experienceYears":0}})
         assert ok.status_code==200
-        assert captured["profile"]=={"occupation":"","skills":["Python"],"experienceYears":0.0}
+        assert captured["profile"]=={"occupation":"","skills":["Python"],"experienceYears":0.0,"visa":"","evidence":[]}

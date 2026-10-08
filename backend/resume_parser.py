@@ -389,6 +389,8 @@ def parse(text: str, today: date | None = None) -> dict:
             name_, tools = header_tools(name_)
         projects.append({"name": name_, "tools": tools, "bullets": it["bullets"], "start": it.get("start"), "end": it.get("end")})
     groups = skill_groups(sec.get("skills", []))
+    if not any(g["items"] for g in groups):
+        groups = inferred_skills(experience + volunteering, projects, summary)
     certs = certification_items(sec.get("certifications", []))
     publications = paragraph_items(sec.get("publications", []))
     achievements = []
@@ -418,7 +420,7 @@ def parse(text: str, today: date | None = None) -> dict:
         city = next((p.title() for p in AU_PLACES if p in head_text.lower()), "")
         location, loc_basis = f"{city + ', ' if city else ''}{st}", "Resume header"
     else:
-        for e in sorted(experience + volunteering, key=lambda x: x.get("start") or "", reverse=True):
+        for e in sorted(experience, key=lambda x: x.get("start") or "", reverse=True) + sorted(volunteering, key=lambda x: x.get("start") or "", reverse=True):
             if e["where"] == "australia" and e["state"]:
                 city = next((p.title() for p in AU_PLACES if p in f"{e['org']} {e['location']}".lower()), "")
                 location, loc_basis = f"{city + ', ' if city else ''}{e['state']}", f"Most recent Australian role ({e['org']})"
@@ -442,6 +444,25 @@ def parse(text: str, today: date | None = None) -> dict:
     return resume
 
 
+def inferred_skills(roles, projects, summary):
+    """No skills section: conclude skills from what the person describes doing, with the source kept."""
+    from job_analysis import mentions
+    found = {}
+    for r in roles:
+        for m in mentions(f"{r.get('title','')}. {' '.join(r.get('bullets', []))}"):
+            found.setdefault(m["skill"], f"{r.get('title') or 'a role'}")
+    for p in projects:
+        for m in mentions(f"{p.get('name','')}. {' '.join(p.get('tools', []))}. {' '.join(p.get('bullets', []))}"):
+            found.setdefault(m["skill"], f"project {p.get('name')}")
+        for t in p.get("tools", []):
+            found.setdefault(t, f"project {p.get('name')}")
+    for m in mentions(summary or ""):
+        found.setdefault(m["skill"], "your summary")
+    if not found:
+        return []
+    return [{"name": "Found in your experience", "items": list(found)[:30], "inferred": True, "sources": found}]
+
+
 def warnings(resume):
     w = []
     if not resume["experience"]:
@@ -451,6 +472,8 @@ def warnings(resume):
         w.append(f"{len(undated)} role(s) have no dates, so they are not counted in totals.")
     if not resume["education"]:
         w.append("No education entries were found.")
+    if any(g.get("inferred") for g in resume["skillGroups"]):
+        w.append("No skills section was found, so skills were concluded from your experience and projects. Check them below.")
     if not resume["projects"]:
         w.append("No projects were found. Graduates often rely on projects as evidence, so add your strongest ones.")
     return w

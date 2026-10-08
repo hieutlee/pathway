@@ -149,3 +149,19 @@
 @media(max-width:700px){.rvWrap,.rvNav{padding:0 16px}.rvForm,.occOther,.expTotals{grid-template-columns:1fr}.expEdit{grid-template-columns:1fr}.skillGroup{grid-template-columns:1fr}.rvHead h1{font-size:26px}.rvCard{padding:17px}.expTop{flex-direction:column}.expDur{text-align:left}}
 .rvHead h1{overflow-wrap:anywhere}.rvHead h1 b{word-break:break-all}
 .rvForm>label,.occOther>label{min-width:0}.rvForm select,.rvForm input,.occOther select,.occOther input{width:100%;max-width:100%}.rvGrid>*{min-width:0}
+
+/* v3: inclusion, drag and drop */
+.expTotal{display:flex;gap:11px;align-items:center;background:#e6f5ef;border-radius:12px;padding:12px 14px;margin-bottom:12px;color:#0b5a49}
+.expTotal b{display:block;font:800 19px 'Manrope';color:#102a24}.expTotal span{font-size:12px;color:#41554c}
+.expRow.off{opacity:.6;background:#fafbfa}
+.expRow[draggable=true],.volRow[draggable=true]{cursor:grab}
+.expRow.dragging,.volRow.dragging{opacity:.4;border-style:dashed}
+.grip{display:grid;place-items:center;color:#a9b7b1;flex:none;align-self:center}
+.expRow:hover .grip,.volRow:hover .grip{color:#0c6b58}
+.volRow{gap:10px}.volRow>div{flex:1;min-width:0}
+.dropZone{transition:box-shadow .15s,border-color .15s,background .15s}
+.dropZone.armed{border-style:dashed;border-color:#9ed3bd}
+.dropZone.over{border-color:#0c6b58;background:#f2fbf6;box-shadow:0 0 0 4px #dff3eb}
+.dropHint{margin-top:10px;border:2px dashed #9ed3bd;border-radius:12px;padding:14px;text-align:center;font-size:13px;font-weight:700;color:#0c6b58;background:#f7fcf9}
+.rvForm .opt{font-style:normal;font-weight:600;color:#9aaba3;font-size:11px;margin-left:4px}
+.expActions button:nth-child(2){font-size:10.5px}

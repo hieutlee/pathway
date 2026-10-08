@@ -256,10 +256,16 @@ class RecommendationRequest(BaseModel):
     profile: dict[str,Any]
     intelligence: dict[str,Any]
 
+class EvidenceItem(BaseModel):
+    source: str = Field(default="", max_length=160)
+    text: str = Field(default="", max_length=2500)
+
 class JobProfile(BaseModel):
     occupation: str = Field(default="", max_length=160)
-    skills: list[str] = Field(default_factory=list, max_length=100)
+    skills: list[str] = Field(default_factory=list, max_length=150)
     experienceYears: float | None = Field(default=None, ge=0, le=80)
+    visa: str = Field(default="", max_length=160)
+    evidence: list[EvidenceItem] = Field(default_factory=list, max_length=80)
 
 class JobSearchRequest(BaseModel):
     role: str = Field(min_length=2, max_length=160)

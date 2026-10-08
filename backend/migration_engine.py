@@ -1066,6 +1066,7 @@ def missing_inputs(ctx: Ctx):
     rows = []
     def need(field, lbl, why, weight):
         rows.append({"field": field, "label": lbl, "why": why, "weight": weight})
+    if ctx.visa == "unknown": need("visa", "Current visa", "Every route starts from the visa you hold now.", 4)
     if not ctx.dob: need("dob", "Date of birth", "Age points, the 485 age limit and the under-45 cut-off all depend on it.", 3)
     if ctx.visa == "500" and not parse_date(ctx.c.get("courseCompletion")): need("courseCompletion", "Course completion date", "Starts the 485 clock and every graduate milestone.", 3)
     if not ctx.visa_expiry and ctx.visa not in SETTLED: need("visaExpiry", "Visa expiry", "Sets the coverage window and visa-gap warnings.", 3)

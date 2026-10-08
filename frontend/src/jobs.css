@@ -1,0 +1,105 @@
+/* ===== Jobs v2 ===== */
+.jobs2{gap:16px}
+.jobs2 .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;min-width:0}
+.jobs2 h3{font:800 18px/1.25 'Manrope',sans-serif;margin:4px 0 0}
+.searchCard{padding:18px 20px!important}
+.searchForm{display:grid;grid-template-columns:1.4fr 1.2fr .8fr auto;gap:12px;align-items:end}
+.searchForm label{display:flex;flex-direction:column;gap:6px;min-width:0}
+.searchForm label>span{font-size:11.5px;font-weight:800;color:#41554c;text-transform:uppercase;letter-spacing:.05em}
+.sfInput,.locWrap{position:relative;display:flex;align-items:center}
+.sfInput>svg,.locIcon{position:absolute;left:12px;color:#7a8983;pointer-events:none}
+.searchForm input,.searchForm select{width:100%;height:46px;border:1px solid #d9e2dc;border-radius:12px;padding:0 12px;font-size:14.5px;background:#fbfcfb;color:#132522;min-width:0}
+.sfInput input,.locWrap input{padding-left:38px}
+.searchForm input:focus,.searchForm select:focus{outline:2px solid #9ed3bd;border-color:#5aa88a;background:#fff}
+.searchForm .primary{height:46px;padding:0 20px;white-space:nowrap}
+.searchForm .primary:disabled{opacity:.55;cursor:not-allowed}
+.locList{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:20;list-style:none;margin:0;padding:6px;background:#fff;border:1px solid #d9e2dc;border-radius:12px;box-shadow:0 18px 40px -20px rgba(16,42,36,.45)}
+.locList li{padding:9px 11px;border-radius:8px;font-size:14px;cursor:pointer}.locList li.hi{background:#e6f5ef;color:#0b5a49}
+.sfSuggest{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:12px}
+.sfSuggest>span{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#0c6b58;margin-right:3px}
+.sfSuggest button{border:1px solid #cfdcd5;background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:650;color:#2f443b}
+.sfSuggest button:hover:not(:disabled){border-color:#0c6b58;color:#0c6b58;background:#f2faf6}
+.jobsEmpty{display:flex;gap:16px;align-items:flex-start;color:#0c6b58}.jobsEmpty p{color:#5f726a;font-size:13.5px;line-height:1.6;margin:6px 0 0}.jobsEmpty h3{color:#132522}
+.levelBar{display:flex;gap:6px;flex-wrap:wrap}
+.levelBar button{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700;color:#41554c}
+.levelBar button b{font-size:11px;background:#eef1ef;border-radius:999px;padding:1px 7px}
+.levelBar button.on{background:#102a24;border-color:#102a24;color:#fff}.levelBar button.on b{background:#0c6b58;color:#fff}
+
+/* market chart */
+.marketCard{padding:22px!important}
+.mkHead{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+.mkHead p{margin:6px 0 0;font-size:13px;color:#5f726a;max-width:620px;line-height:1.55}
+.mkScore{display:grid;grid-template-columns:repeat(3,auto);gap:4px 16px;text-align:center;background:#f6f8f6;border-radius:14px;padding:12px 16px;flex:none}
+.mkScore span{font-size:11px;color:#55665e;display:flex;flex-direction:column;align-items:center}
+.mkScore b{font:800 22px 'Manrope'}.mkScore .g{color:#0c6b58}.mkScore .t{color:#2a9d8f}.mkScore .x{color:#8a7d66}
+.mkScore small{grid-column:1/-1;font-size:10.5px;color:#7a8983}
+.mkBody{display:grid;grid-template-columns:280px minmax(170px,.9fr) minmax(0,1.3fr);gap:22px;align-items:center;margin-top:16px}
+.mkChart{position:relative;height:280px}
+.mkCenter{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;text-align:center}
+.mkCenter b{font:800 30px 'Manrope';color:#102a24}.mkCenter span{font-size:11.5px;color:#5f726a;line-height:1.35;max-width:120px}
+.mkLegend{display:flex;flex-direction:column;gap:3px}
+.mkLegend button{display:grid;grid-template-columns:12px 1fr auto 10px;gap:9px;align-items:center;border:0;background:none;text-align:left;padding:7px 9px;border-radius:9px;font-size:13px;color:#2f443b}
+.mkLegend button:hover,.mkLegend button.on{background:#f2f6f4}.mkLegend button.on{font-weight:800}
+.mkLegend i{width:12px;height:12px;border-radius:4px}.mkLegend b{font-size:12px;color:#55665e}
+.mkLegend em{width:9px;height:9px;border-radius:50%;background:#d6dcd8}.mkLegend em.have{background:#0c6b58}.mkLegend em.transferable{background:#fff;border:2px solid #2a9d8f}
+.mkDetail{background:#f7f9f8;border-radius:14px;padding:16px 18px;align-self:stretch;min-width:0}
+.mkDetail h4{font:800 17px 'Manrope';margin:0 0 4px}
+.mkStat{font-size:12.5px;color:#55665e;margin:0 0 12px;line-height:1.5}
+.mkYou{border-radius:11px;padding:10px 12px;margin-bottom:10px}
+.mkYou b{display:flex;align-items:center;gap:6px;font-size:13px}.mkYou p{margin:4px 0 0;font-size:12.5px;line-height:1.5}.mkYou em{display:block;font-size:11.5px;margin-top:5px;color:#55665e}
+.mkYou.have{background:#dcf3e8;color:#0b5a49}.mkYou.transferable{background:#e3f4f1;color:#17606d;border:1px dashed #2a9d8f}.mkYou.gap{background:#fff;border:1px solid #e6e1d6;color:#6f5b30}
+.mkQuote{display:block;text-decoration:none;color:#2f443b;border-left:3px solid #c9d6d0;padding:6px 0 6px 10px;margin-top:8px;font-size:12px;line-height:1.5}
+.mkQuote small{display:flex;align-items:center;gap:4px;color:#0c6b58;font-weight:700;margin-top:3px}
+.marketCard .jobMethod{display:flex;gap:6px;align-items:flex-start;margin-top:14px}
+.jobsSideGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.wrList{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.wrList>div{display:grid;grid-template-columns:10px 1fr auto;gap:9px;align-items:center;font-size:13px}
+.wrList i{width:9px;height:9px;border-radius:50%;background:#c9d6d0}.wrList i.no{background:#c2415d}.wrList i.ok{background:#0c6b58}.wrList i.check{background:#d39a3a}
+.demandLine{font-size:13px;line-height:1.6;color:#2f443b}
+
+/* ranking */
+.rankHead{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-top:6px}
+.legendRow{display:flex;flex-wrap:wrap;gap:6px}
+.groupHead{display:flex;align-items:center;gap:7px;font:800 13px 'Manrope';margin:8px 0 0;padding:0;color:#0b5a49;letter-spacing:.01em}
+.groupHead.check{color:#8a5a12}.groupHead.no{color:#9b2c45}
+.closedToggle{border:0;background:none;cursor:pointer}
+.jobList{display:flex;flex-direction:column;gap:10px}
+.jobCard{background:#fff;border:1px solid var(--line);border-left:4px solid #0c6b58;border-radius:14px;padding:16px 18px}
+.jobCard.tier1{border-left-color:#d39a3a}.jobCard.tier2{border-left-color:#c2415d;background:#fffdfd}
+.jcTop{display:flex;gap:13px;align-items:flex-start}
+.jcLogo{width:40px;height:40px;border-radius:11px;flex:none;display:grid;place-items:center;background:#102a24;color:#fff;font:800 16px 'Manrope'}
+.jcHead{flex:1;min-width:0}.jcCompany{font-size:12px;font-weight:800;color:#55665e}
+.jcHead h3{font-size:16px!important;margin:2px 0}.jcHead h3 a{color:#132522;text-decoration:none;display:inline-flex;gap:5px;align-items:center}.jcHead h3 a:hover{text-decoration:underline}
+.jcHead p{margin:2px 0 0;font-size:12.5px;color:#6a7d72}
+.jcBadges{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.eligBadge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;border-radius:999px;padding:4px 10px}
+.eligBadge.ok{background:#dcf3e8;color:#0b5a49}.eligBadge.check{background:#fbf0dc;color:#8a5a12}.eligBadge.no{background:#fbe1e6;color:#9b2c45}
+.fitBadge{font-size:11px;font-weight:800;border-radius:999px;padding:3px 9px;background:#eef1ef;color:#41554c}
+.fitBadge.strongmatch{background:#102a24;color:#fff}.fitBadge.goodmatch{background:#e1f1f4;color:#17606d}.fitBadge.stretch{background:#fbf0dc;color:#8a5a12}
+.jcSkills{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}
+.skillChip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;border-radius:8px;padding:5px 9px;cursor:default}
+.skillChip.have{background:#0c6b58;color:#fff}
+.skillChip.transferable{background:#e3f4f1;color:#0b5a49;border:1px dashed #2a9d8f}
+.skillChip.gap{background:#f1f3f2;color:#6a7a73}
+.jcMeta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.metaChip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;border-radius:7px;padding:4px 8px;background:#f4f6f5;color:#41554c}
+.metaChip.warn{background:#fbf0dc;color:#8a5a12}.metaChip.okm{background:#e6f5ef;color:#0b5a49}
+.jcCount{font-size:11.5px;color:#7a8983;margin-left:auto}
+.jcMore{display:inline-flex;align-items:center;gap:5px;border:0;background:none;color:#0c6b58;font-size:12px;font-weight:700;padding:8px 0 0}
+.jcWhy{margin-top:8px;border-top:1px solid #f0f3f1;padding-top:10px;font-size:12.5px;line-height:1.55;color:#41554c}
+.jcWhy ul{list-style:none;padding:0;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.jcWhy li{border-left:3px solid #c9d6d0;padding-left:10px}.jcWhy li.have{border-color:#0c6b58}.jcWhy li.transferable{border-color:#2a9d8f}
+.jcWhy li b{margin-right:6px}.jcWhy li em{display:block;color:#7a8983;font-size:11.5px}
+.jcRights em{color:#9b2c45}
+.jcWhy a{display:inline-flex;align-items:center;gap:4px;color:#0c6b58;font-weight:700}
+
+/* tooltip */
+.tip{position:relative;outline:none}
+.tipBox{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);width:max-content;max-width:300px;background:#102a24;color:#e6f2ed;font-size:12px;font-weight:500;line-height:1.5;padding:9px 11px;border-radius:10px;box-shadow:0 14px 30px -14px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .12s;z-index:30;white-space:normal;text-align:left}
+.tipBox:after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#102a24}
+.tip:hover .tipBox,.tip:focus .tipBox{opacity:1}
+.jcBadges .tipBox{left:auto;right:0;transform:none}.jcBadges .tipBox:after{left:auto;right:16px;transform:none}
+
+@media(max-width:1150px){.searchForm{grid-template-columns:1fr 1fr}.mkBody{grid-template-columns:240px 1fr}.mkDetail{grid-column:1/-1}.jobsSideGrid{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.searchForm{grid-template-columns:1fr}.mkHead{flex-direction:column}.mkBody{grid-template-columns:1fr}.mkChart{height:240px}.jobsSideGrid{grid-template-columns:1fr}.jcTop{flex-wrap:wrap}.jcBadges{flex-direction:row;align-items:center;width:100%}.jcCount{margin-left:0;width:100%}.tipBox{max-width:240px}}
+.tipBox{display:none}.tip:hover .tipBox,.tip:focus .tipBox{display:block}@media(max-width:700px){.tipBox{left:0;transform:none}.tipBox:after{left:18px}}
