@@ -143,7 +143,7 @@ export function ResumeReview({initialResume,profile,fileName,onBack,onConfirm}){
       </div>
       <div className="rvGrid">
         <div className="rvMain">
-          <Section icon={MapPin} title="About you" subtitle="Your visa and its expiry can be added now or later from your profile.">
+          <Section icon={MapPin} title="About you" subtitle="Your visa and its expiry can be added now, or later in the Migration tab.">
             <div className="rvForm">
               <label>Name<input value={about.name} onChange={e=>setAbout({...about,name:e.target.value})}/></label>
               <label>Location<input value={about.location} placeholder="e.g. Brisbane, QLD" onChange={e=>setAbout({...about,location:e.target.value})}/>{r.locationBasis&&<small>Found from: {r.locationBasis}</small>}</label>
@@ -233,7 +233,7 @@ export function ResumeReview({initialResume,profile,fileName,onBack,onConfirm}){
               <div><dt>Visa</dt><dd>{about.visa||<em>Add later</em>}</dd></div>
             </dl>
             <button className="primary rvGo" onClick={confirm}>Looks right, build my plan<ArrowUpRight size={17}/></button>
-            <p className="rvFine"><Clock3 size={12}/>Experience comes only from each role's own dates. You can add or change your visa details later from your profile.</p>
+            <p className="rvFine"><Clock3 size={12}/>Experience comes only from each role's own dates. You can add or change your visa details later in the Migration tab.</p>
           </div>
         </aside>
       </div>
