@@ -12,16 +12,20 @@ const visaColor=c=>VISA_COLOR[c]||'#7b8a86'
 const LEVEL_CLASS={'Strong':'strong','Viable':'viable','Depends on employer':'employer','Stretch':'stretch','Needs evidence':'evidence','Long shot':'longshot','Not preferred':'muted','Not available':'blocked'}
 export const LevelBadge=({level})=><span className={`lvl ${LEVEL_CLASS[level]||'muted'}`}>{level}</span>
 export function RouteChips({route=[],compact=false}){return <div className={`routeChips ${compact?'compact':''}`}>{route.map((c,i)=><React.Fragment key={c+i}>{i>0&&<ArrowRight className="routeArrow"/>}<span className="visaChip" style={{'--c':visaColor(c)}}>{/^\d+$/.test(c)?c:c.toUpperCase()}</span></React.Fragment>)}</div>}
+export const shortName=s=>{if(!s) return '';const st=s.state?` (${s.state})`:'';const k=s.id.split('-')[0];return ({'189':'189 Skilled Independent','190':`190 State nomination${st}`,'491':`491 Regional${st} then 191`,'482':'482 then 186 Transition','186':'186 Direct Entry','494':'494 Regional employer then 191','partner':'Partner 820 then 801'})[k]||s.name}
 const KIND_ICON={study:GraduationCap,test:Languages,assessment:Award,apply:FileText,visa:BadgeCheck,work:BriefcaseBusiness,decision:Target,pr:Flag,prepare:ListChecks,step:Signpost}
 
 const SUB_TABS=[
-  {id:'strategies',label:'Strategies',icon:Layers},
-  {id:'roadmap',label:'Roadmap',icon:Route},
-  {id:'tree',label:'Decision tree',icon:GitBranch},
-  {id:'points',label:'Points lab',icon:Calculator},
-  {id:'visas',label:'Visa checks',icon:ListChecks},
-  {id:'deadlines',label:'Deadlines',icon:CalendarClock},
+  {id:'plan',label:'My plan',icon:Route},
+  {id:'routes',label:'Compare routes',icon:Layers},
+  {id:'points',label:'Points',icon:Calculator},
+  {id:'checks',label:'Checks & deadlines',icon:ListChecks},
   {id:'evidence',label:'States & evidence',icon:MapIcon},
+]
+const TRACKS=[
+  {id:'independent',label:'Independent',icon:Target,blurb:'Points tested. No employer needed: 189, 190 and 491.'},
+  {id:'sponsored',label:'Employer sponsored',icon:Building2,blurb:'An employer nominates you. Not points tested: 482 to 186, 494.'},
+  {id:'family',label:'Partner',icon:Heart,blurb:'Through your Australian citizen or PR partner.'},
 ]
 
 /* ---------- calendar export ---------- */
@@ -38,25 +42,24 @@ export function downloadIcs(events,name='pathway-migration.ics'){
 
 /* ---------- main view ---------- */
 export default function Migration({plan,loading,error,profile,setProfile,circumstances,setCircumstances,activeId,setActiveId,checks,toggleCheck,onJobsAction,jobs,onRefresh,sample}){
-  const [tab,setTab]=useState('strategies')
+  const [tab,setTab]=useState('plan')
   const [compare,setCompare]=useState(null)
   if(!plan&&loading) return <div className="singleView"><MigrationSkeleton/></div>
   if(!plan) return <div className="singleView"><section className="card dataEmpty"><TriangleAlert/><b>The migration planner is unavailable</b><p>{error||'The planning service did not respond. Check that the backend is running, then retry.'}</p><button className="primary" onClick={onRefresh}><RefreshCw size={16}/>Retry</button></section></div>
   const strategies=plan.strategies||[]
   const active=strategies.find(s=>s.id===activeId)||strategies[0]
-  const compared=compare||strategies.slice(0,3).map(s=>s.id)
-  const openRoadmap=id=>{setActiveId(id);setTab('roadmap');window.scrollTo?.({top:0,behavior:'smooth'})}
+  const compared=(compare||strategies.slice(0,3).map(s=>s.id)).filter(id=>strategies.some(s=>s.id===id))
+  const openPlan=id=>{setActiveId(id);setTab('plan');window.scrollTo?.({top:0,behavior:'smooth'})}
   return <div className="singleView migrationApp">
     <PrHero plan={plan} active={active} loading={loading}/>
     <Circumstances plan={plan} profile={profile} setProfile={setProfile} c={circumstances} set={setCircumstances} sample={sample}/>
     {plan.context?.settled?<section className="card settledCard"><BadgeCheck/><div><h3>{plan.headline?.title}</h3><p>{plan.headline?.detail}</p></div></section>:<>
-      <nav className="subTabs" role="tablist">{SUB_TABS.map(t=><button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}><t.icon size={16}/>{t.label}{t.id==='deadlines'&&<em>{(plan.deadlines||[]).filter(d=>d.severity==='high').length}</em>}</button>)}</nav>
-      {tab==='strategies'&&<Strategies strategies={strategies} activeId={active?.id} compared={compared} setCompare={setCompare} openRoadmap={openRoadmap} setActiveId={setActiveId}/>}
-      {tab==='roadmap'&&active&&<Roadmap plan={plan} strategy={active} strategies={strategies} setActiveId={setActiveId} checks={checks} toggleCheck={toggleCheck} onJobsAction={onJobsAction}/>}
-      {tab==='tree'&&<DecisionTree tree={plan.tree} strategies={strategies} openRoadmap={openRoadmap}/>}
+      <nav className="subTabs" role="tablist">{SUB_TABS.map(t=><button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}><t.icon size={16}/>{t.label}{t.id==='checks'&&<em>{(plan.deadlines||[]).filter(d=>d.severity==='high').length}</em>}</button>)}</nav>
+      {tab==='plan'&&active&&<PlanView plan={plan} strategy={active} strategies={strategies} setActiveId={setActiveId} checks={checks} toggleCheck={toggleCheck} onJobsAction={onJobsAction} goRoutes={()=>setTab('routes')}/>}
+      {tab==='plan'&&!active&&<section className="card dataEmpty"><TriangleAlert/><b>No route can be estimated yet</b><p>Answer the questions above, or open Compare routes to see why routes were ruled out.</p></section>}
+      {tab==='routes'&&<Routes plan={plan} strategies={strategies} activeId={active?.id} compared={compared} setCompare={setCompare} openPlan={openPlan}/>}
       {tab==='points'&&<PointsLab plan={plan} c={circumstances} set={setCircumstances}/>}
-      {tab==='visas'&&<VisaChecks visas={plan.visas||[]}/>}
-      {tab==='deadlines'&&<Deadlines plan={plan} active={active}/>}
+      {tab==='checks'&&<><Deadlines plan={plan} active={active}/><VisaChecks visas={plan.visas||[]}/></>}
       {tab==='evidence'&&<Evidence plan={plan} jobs={jobs} onJobsAction={onJobsAction} profile={profile}/>}
     </>}
     <footer className="migFoot"><Info size={14}/><span>Decision support, not migration advice. Rulebook {plan.rulebook?.version}, verified {fullDate(plan.rulebook?.verified)}. Confirm criteria with Home Affairs, the relevant state and a registered migration agent before lodging anything.</span></footer>
@@ -91,98 +94,114 @@ function PrHero({plan,active,loading}){
 /* ---------- circumstances ---------- */
 const Q_OPTS=[['','Select'],['bachelor','Bachelor or honours'],['masters_coursework','Masters (coursework)'],['masters_research','Masters (research)'],['doctorate','Doctorate (PhD)'],['diploma','Diploma'],['trade','Trade qualification'],['other','Other']]
 const ENG_OPTS=[['','Not tested'],['competent','Competent (IELTS 6 each)'],['proficient','Proficient (IELTS 7 each)'],['superior','Superior (IELTS 8 each)'],['vocational','Below competent']]
-const SA_OPTS=[['','Not sure'],['none','Not started'],['planned','Planned'],['submitted','Submitted'],['positive','Positive outcome']]
+const SA_OPTS=[['','Select'],['none','Not started'],['submitted','Submitted'],['positive','Positive outcome']]
 const PARTNER_OPTS=[['','Select'],['single','Single'],['partner_citizen_pr','Partner is an Australian citizen or PR'],['partner_skilled','Partner: skilled (assessment + competent English)'],['partner_competent_english','Partner: competent English only'],['partner_other','Partner: none of the above']]
-const EMP_OPTS=[['','Not answered'],['none','No sponsor yet'],['interested','An employer is open to it'],['offer','Offer with sponsorship'],['sponsoring','Already sponsored']]
-const YNM=[['','Not answered'],['yes','Yes'],['maybe','Maybe'],['no','No']]
+const EMP_OPTS=[['','Select'],['yes','Yes'],['no','No']]
+const YNM=[['','Select'],['yes','Yes'],['maybe','Maybe'],['no','No']]
 const STATE_CODES=['QLD','NSW','VIC','SA','WA','TAS','ACT','NT']
+
 function F({label,children,hint,missing}){return <label className={`mField ${missing?'missing':''}`}><span>{label}{missing&&<em>affects plan</em>}</span>{children}{hint&&<small>{hint}</small>}</label>}
 function Sel({value,onChange,opts}){return <select value={value??''} onChange={e=>onChange(e.target.value)}>{opts.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>}
 function Num({value,onChange,step=0.5,min=0}){return <input type="number" step={step} min={min} value={value??''} onChange={e=>onChange(e.target.value===''?'':Number(e.target.value))}/>}
 function Toggle({value,onChange,label}){return <button type="button" className={`mToggle ${value?'on':''}`} aria-pressed={!!value} onClick={()=>onChange(!value)}><i/>{label}</button>}
 function Circumstances({plan,profile,setProfile,c,set,sample}){
   const [open,setOpen]=useState(!!(plan.missing||[]).length)
+  const [more,setMore]=useState(false)
   const miss=new Set((plan.missing||[]).map(m=>m.field))
   const s=(k,v)=>set(prev=>({...prev,[k]:v}))
+  const ctx=plan.context||{}
+  const field=c.fieldOfStudy||ctx.field||''
+  const assessor=(ctx.fields||[]).find(f=>f.value===field)?.assessor
+  const regionalStudy=['yes','cat2','cat3'].includes(c.studyRegional)?'yes':'no'
+  const employer=['yes','offer','sponsoring','interested'].includes(c.employer)?'yes':['no','none'].includes(c.employer)?'no':''
   return <section className={`card circCard ${open?'open':''}`}>
     <button className="circHead" onClick={()=>setOpen(!open)} aria-expanded={open}>
-      <div><span className="kicker">Your circumstances</span><h3>{(plan.missing||[]).length?`${plan.missing.length} answers would sharpen this plan`:'Everything the planner needs is filled in'}</h3><p>Every answer recalculates points, dates and routes instantly. Saved on this device.</p></div>
-      <div className="missChips">{(plan.missing||[]).slice(0,4).map(m=><span key={m.field} title={m.why}>{m.label}</span>)}</div>{open?<ChevronUp/>:<ChevronDown/>}
+      <div><span className="kicker">Your circumstances</span><h3>{(plan.missing||[]).length?`${plan.missing.length} answer${plan.missing.length>1?'s':''} would sharpen this plan`:'Your answers are complete'}</h3><p>{open?'Every change updates your plan straight away. Saved on this device.':'Tap to review or change your answers.'}</p></div>
+      <div className="missChips">{(plan.missing||[]).slice(0,3).map(m=><span key={m.field} title={m.why}>{m.label}</span>)}</div>{open?<ChevronUp/>:<ChevronDown/>}
     </button>
-    {sample&&<div className="sampleNote"><Info size={14}/>These are sample circumstances for the demo profile. Replace them with yours.</div>}
-    {(plan.assumptions||[]).length>0&&<div className="assumeNote"><Info size={14}/><div>{plan.assumptions.map((a,i)=><p key={i}>{a}</p>)}</div></div>}
-    {open&&<div className="circGrid">
-      <fieldset><legend><Lock size={14}/>Visa and identity</legend>
-        <F label="Current visa" hint="Shared with your profile"><input value={profile.visa||''} readOnly onClick={()=>{}} title="Change on the profile screen"/></F>
-        <F label="Visa expiry" missing={miss.has('visaExpiry')}><input type="date" value={profile.visaExpiry||''} onChange={e=>setProfile(p=>({...p,visaExpiry:e.target.value}))}/></F>
-        <F label="Date of birth" missing={miss.has('dob')} hint="Age points and age limits"><input type="date" value={c.dob||''} onChange={e=>s('dob',e.target.value)}/></F>
-        <F label="Passport country" hint="Some passports are exempt from English tests"><input value={c.passport||''} placeholder="e.g. Vietnam" onChange={e=>s('passport',e.target.value)}/></F>
-        <F label="Previously held a 485?"><Toggle value={c.previous485} onChange={v=>s('previous485',v)} label={c.previous485?'Yes':'No'}/></F>
-      </fieldset>
-      <fieldset><legend><GraduationCap size={14}/>Study</legend>
-        <F label="Highest qualification"><Sel value={c.qualification} onChange={v=>s('qualification',v)} opts={Q_OPTS}/></F>
-        <F label="Institution"><input value={c.institution||''} placeholder="e.g. QUT" onChange={e=>s('institution',e.target.value)}/></F>
-        <div className="two"><F label="Study state"><Sel value={c.studyState} onChange={v=>s('studyState',v)} opts={[['','Select'],...STATE_CODES.map(x=>[x,x])]}/></F><F label="Regional campus"><Sel value={c.studyRegional} onChange={v=>s('studyRegional',v)} opts={[['no','No'],['cat2','Category 2'],['cat3','Category 3']]}/></F></div>
-        <F label="Course completion" missing={miss.has('courseCompletion')} hint="Actual or expected date on your completion letter"><input type="date" value={c.courseCompletion||''} onChange={e=>s('courseCompletion',e.target.value)}/></F>
-        <div className="toggleRow"><Toggle value={c.auQualification!==false} onChange={v=>s('auQualification',v)} label="Australian degree"/><Toggle value={c.specialistEducation} onChange={v=>s('specialistEducation',v)} label="STEM research degree"/></div>
-      </fieldset>
-      <fieldset><legend><Languages size={14}/>English and assessments</legend>
-        <F label="English level" missing={miss.has('englishLevel')} hint="IELTS or PTE equivalent in every band"><Sel value={c.englishLevel} onChange={v=>s('englishLevel',v)} opts={ENG_OPTS}/></F>
-        <F label="Test date"><input type="date" value={c.englishTestDate||''} onChange={e=>s('englishTestDate',e.target.value)}/></F>
-        <F label="Skills assessment" missing={miss.has('skillsAssessment')} hint={plan.context?.assessor?.name}><Sel value={c.skillsAssessment} onChange={v=>s('skillsAssessment',v)} opts={SA_OPTS}/></F>
-        {['submitted','positive'].includes(c.skillsAssessment)&&<F label="Assessment date"><input type="date" value={c.skillsAssessmentDate||''} onChange={e=>s('skillsAssessmentDate',e.target.value)}/></F>}
-        <div className="toggleRow"><Toggle value={c.professionalYear} onChange={v=>s('professionalYear',v)} label="Professional Year"/><Toggle value={c.naati} onChange={v=>s('naati',v)} label="NAATI CCL"/></div>
-      </fieldset>
-      <fieldset><legend><BriefcaseBusiness size={14}/>Work</legend>
-        <F label="Working in your occupation now?" missing={miss.has('employedInOccupation')}><Sel value={c.employedInOccupation} onChange={v=>s('employedInOccupation',v)} opts={[['','Not answered'],['yes','Yes, 20+ hours a week'],['no','Not yet']]}/></F>
-        <div className="two"><F label="Australian skilled years"><Num value={c.auExperienceYears} onChange={v=>s('auExperienceYears',v)}/></F><F label="Overseas skilled years"><Num value={c.overseasExperienceYears} onChange={v=>s('overseasExperienceYears',v)}/></F></div>
-        <div className="two"><F label="Months worked in state"><Num value={c.stateEmploymentMonths} step={1} onChange={v=>s('stateEmploymentMonths',v)}/></F><F label="Months worked regionally"><Num value={c.regionalEmploymentMonths} step={1} onChange={v=>s('regionalEmploymentMonths',v)}/></F></div>
-        <F label="Employer sponsorship" missing={miss.has('employer')}><Sel value={c.employer} onChange={v=>s('employer',v)} opts={EMP_OPTS}/></F>
-        <div className="two"><F label="Salary (AUD a year)"><Num value={c.salary} step={1000} onChange={v=>s('salary',v)}/></F>{profile.visa?.includes('482')&&<F label="Months with sponsor"><Num value={c.sponsorMonths} step={1} onChange={v=>s('sponsorMonths',v)}/></F>}</div>
-      </fieldset>
-      <fieldset><legend><Heart size={14}/>Family and preferences</legend>
-        <F label="Relationship" missing={miss.has('partner')}><Sel value={c.partner} onChange={v=>s('partner',v)} opts={PARTNER_OPTS}/></F>
-        {c.partner==='partner_citizen_pr'&&<div className="two"><F label="Relationship type"><Sel value={c.partnerRelationship} onChange={v=>s('partnerRelationship',v)} opts={[['','Select'],['married','Married'],['registered','Registered'],['de_facto','De facto']]}/></F><F label="Months together"><Num value={c.relationshipMonths} step={1} onChange={v=>s('relationshipMonths',v)}/></F></div>}
-        <F label="Live regionally for 3+ years?" missing={miss.has('regional')}><Sel value={c.regional} onChange={v=>s('regional',v)} opts={YNM}/></F>
-        <F label="States to target"><div className="stateChips">{STATE_CODES.map(st=>{const on=(c.preferredStates||[]).includes(st);return <button type="button" key={st} className={on?'on':''} onClick={()=>s('preferredStates',on?(c.preferredStates||[]).filter(x=>x!==st):[...(c.preferredStates||[]),st].slice(0,2))}>{st}</button>})}</div><small>Up to two. Defaults to your location.</small></F>
-        <F label="Exceptional international record?"><Toggle value={c.exceptionalTalent} onChange={v=>s('exceptionalTalent',v)} label={c.exceptionalTalent?'Yes, show the 858 route':'No'}/></F>
-      </fieldset>
-    </div>}
+    {open&&<>
+      {sample&&<div className="sampleNote"><Info size={14}/>These are sample answers for the demo profile. Replace them with yours.</div>}
+      <div className="circGrid four">
+        <fieldset><legend><Lock size={14}/>You</legend>
+          <F label="Current visa" hint="Change it on the profile screen"><input value={profile.visa||''} readOnly/></F>
+          <F label="Visa expiry" missing={miss.has('visaExpiry')}><input type="date" value={profile.visaExpiry||''} onChange={e=>setProfile(p=>({...p,visaExpiry:e.target.value}))}/></F>
+          <F label="Date of birth" missing={miss.has('dob')}><input type="date" value={c.dob||''} onChange={e=>s('dob',e.target.value)}/></F>
+          <F label="Relationship" missing={miss.has('partner')}><Sel value={c.partner} onChange={v=>s('partner',v)} opts={PARTNER_OPTS}/></F>
+          {c.partner==='partner_citizen_pr'&&<div className="two"><F label="Relationship type"><Sel value={c.partnerRelationship} onChange={v=>s('partnerRelationship',v)} opts={[['','Select'],['married','Married'],['registered','Registered'],['de_facto','De facto']]}/></F><F label="Months together"><Num value={c.relationshipMonths} step={1} onChange={v=>s('relationshipMonths',v)}/></F></div>}
+        </fieldset>
+        <fieldset><legend><GraduationCap size={14}/>Study</legend>
+          <F label="Field of study" hint={assessor?`Skills assessed by ${assessor}`:'Decides your assessing authority'}><Sel value={field} onChange={v=>s('fieldOfStudy',v)} opts={[['','Select'],...(ctx.fields||[]).map(f=>[f.value,f.label])]}/></F>
+          <F label="Highest qualification"><Sel value={c.qualification} onChange={v=>s('qualification',v)} opts={Q_OPTS}/></F>
+          <div className="two"><F label="Study state"><Sel value={c.studyState} onChange={v=>s('studyState',v)} opts={[['','Select'],...STATE_CODES.map(x=>[x,x])]}/></F><F label="Regional campus?"><Sel value={regionalStudy} onChange={v=>s('studyRegional',v)} opts={[['no','No'],['yes','Yes']]}/></F></div>
+          <F label="Course completion" missing={miss.has('courseCompletion')} hint="Date on your completion letter, actual or expected"><input type="date" value={c.courseCompletion||''} onChange={e=>s('courseCompletion',e.target.value)}/></F>
+        </fieldset>
+        <fieldset><legend><Languages size={14}/>English and skills</legend>
+          <F label="English level" missing={miss.has('englishLevel')} hint="Lowest band counts"><Sel value={c.englishLevel} onChange={v=>s('englishLevel',v)} opts={ENG_OPTS}/></F>
+          <F label="Skills assessment" missing={miss.has('skillsAssessment')} hint={assessor}><Sel value={c.skillsAssessment==='planned'?'none':c.skillsAssessment} onChange={v=>s('skillsAssessment',v)} opts={SA_OPTS}/></F>
+          <div className="toggleRow"><Toggle value={c.naati} onChange={v=>s('naati',v)} label="NAATI CCL passed"/>{ctx.pyEligible&&<Toggle value={c.professionalYear} onChange={v=>s('professionalYear',v)} label="Professional Year done"/>}</div>
+        </fieldset>
+        <fieldset><legend><BriefcaseBusiness size={14}/>Work and preferences</legend>
+          <F label="Working in your field now?" missing={miss.has('employedInOccupation')}><Sel value={c.employedInOccupation} onChange={v=>s('employedInOccupation',v)} opts={[['','Select'],['yes','Yes, 20+ hours a week'],['no','Not yet']]}/></F>
+          <F label="An employer will sponsor you?" missing={miss.has('employer')} hint={employer==='no'?'Sponsored routes are hidden':'Yes shows 482 and 186 routes'}><Sel value={employer} onChange={v=>s('employer',v)} opts={EMP_OPTS}/></F>
+          <F label="Live regionally for 3+ years?" missing={miss.has('regional')}><Sel value={c.regional} onChange={v=>s('regional',v)} opts={YNM}/></F>
+          <F label="States to target"><div className="stateChips">{STATE_CODES.map(st=>{const on=(c.preferredStates||[]).includes(st);return <button type="button" key={st} className={on?'on':''} onClick={()=>s('preferredStates',on?(c.preferredStates||[]).filter(x=>x!==st):[...(c.preferredStates||[]),st].slice(-2))}>{st}</button>})}</div></F>
+        </fieldset>
+      </div>
+      <button className="moreBtn" onClick={()=>setMore(!more)} aria-expanded={more}>{more?<ChevronUp size={15}/>:<ChevronDown size={15}/>}{more?'Hide extra details':'More details (optional): experience, dates, salary'}</button>
+      {more&&<div className="circGrid four extra">
+        <fieldset><F label="Australian skilled years"><Num value={c.auExperienceYears} onChange={v=>s('auExperienceYears',v)}/></F><F label="Overseas skilled years"><Num value={c.overseasExperienceYears} onChange={v=>s('overseasExperienceYears',v)}/></F></fieldset>
+        <fieldset><F label="Months worked in target state" hint="20+ hours a week, after graduating"><Num value={c.stateEmploymentMonths} step={1} onChange={v=>s('stateEmploymentMonths',v)}/></F><F label="Months worked regionally"><Num value={c.regionalEmploymentMonths} step={1} onChange={v=>s('regionalEmploymentMonths',v)}/></F></fieldset>
+        <fieldset><F label="English test date"><input type="date" value={c.englishTestDate||''} onChange={e=>s('englishTestDate',e.target.value)}/></F>{['submitted','positive'].includes(c.skillsAssessment)&&<F label="Assessment date"><input type="date" value={c.skillsAssessmentDate||''} onChange={e=>s('skillsAssessmentDate',e.target.value)}/></F>}<F label="Passport country" hint="UK, US, Canada, NZ and Ireland passports are exempt from English tests"><input value={c.passport||''} onChange={e=>s('passport',e.target.value)}/></F></fieldset>
+        <fieldset>{employer==='yes'&&<F label="Salary (AUD a year)"><Num value={c.salary} step={1000} onChange={v=>s('salary',v)}/></F>}{profile.visa?.includes('482')&&<F label="Months with your sponsor"><Num value={c.sponsorMonths} step={1} onChange={v=>s('sponsorMonths',v)}/></F>}<div className="toggleRow"><Toggle value={c.auQualification!==false} onChange={v=>s('auQualification',v)} label="Australian degree"/><Toggle value={c.specialistEducation} onChange={v=>s('specialistEducation',v)} label="STEM research degree"/></div></fieldset>
+      </div>}
+      {(plan.assumptions||[]).length>0&&<div className="assumeNote"><Info size={14}/><div>{plan.assumptions.map((a,i)=><p key={i}>{a}</p>)}</div></div>}
+    </>}
   </section>
 }
 
-/* ---------- strategies ---------- */
-function Strategies({strategies,activeId,compared,setCompare,openRoadmap,setActiveId}){
+/* ---------- routes ---------- */
+function TrackCards({plan,strategies,activeId,onPick}){
+  const ctx=plan.context||{}
+  return <div className="trackGrid">{TRACKS.filter(t=>t.id!=='family'||plan.tracks?.family).map(t=>{
+    const inTrack=strategies.filter(s=>s.track===t.id)
+    const best=inTrack[0]
+    const hidden=t.id==='sponsored'&&ctx.employer==='no'
+    const on=inTrack.some(s=>s.id===activeId)
+    return <button key={t.id} className={`trackCard ${on?'on':''} ${hidden||!best?'off':''}`} onClick={()=>best&&onPick(best.id)} disabled={!best}>
+      <div className="trackTop"><span className="trackIcon"><t.icon size={17}/></span><b>{t.label}</b>{best&&<LevelBadge level={best.level}/>}</div>
+      <p>{t.blurb}</p>
+      {best?<><RouteChips route={best.route} compact/><div className="trackFacts"><span>Best: <b>{shortName(best)}</b></span><span>PR <b>{best.prWindow.from?fmtDate(best.prWindow.from):'not estimable'}</b></span></div></>:<em className="trackOff">{hidden?'Hidden: you answered No to employer sponsorship.':'No route available with your answers.'}</em>}
+    </button>})}</div>
+}
+function Routes({plan,strategies,activeId,compared,setCompare,openPlan}){
   const toggle=id=>setCompare(compared.includes(id)?compared.filter(x=>x!==id):[...compared,id].slice(-4))
   const rows=strategies.filter(s=>compared.includes(s.id))
+  const [showTree,setShowTree]=useState(false)
   return <>
-    <div className="sectionIntro"><div><span className="kicker">Routes to permanent residence</span><h3>{strategies.length} routes ranked for your circumstances</h3><p>Ranked by how ready you are, then by time. Labels are transparent rules, not approval odds. Open any route to see every dated step.</p></div></div>
-    <div className="stratGrid">{strategies.map((s,i)=><article key={s.id} className={`stratCard ${s.id===activeId?'active':''} ${['Not available','Not preferred'].includes(s.level)?'dim':''}`}>
-      <div className="stratTop"><span className="stratRank">{i+1}</span><LevelBadge level={s.level}/>{s.id===activeId&&<span className="myPlan"><Check size={12}/>My plan</span>}</div>
-      <h4>{s.name}</h4><RouteChips route={s.route} compact/>
-      <p className="stratSummary">{s.summary}</p>
-      <dl className="stratFacts"><div><dt>PR window</dt><dd>{s.prWindow.label}</dd></div><div><dt>Gov. charges</dt><dd>{money(s.costs.government)}</dd></div><div><dt>Obligation</dt><dd>{s.obligation||'–'}</dd></div></dl>
-      <ul className="stratReasons">{s.reasons.slice(0,3).map((r,j)=><li key={j}>{r}</li>)}</ul>
-      {s.risks.length>0&&<div className="stratRisk"><ShieldAlert size={14}/>{s.risks.length} risk{s.risks.length>1?'s':''}: {s.risks[0].title}</div>}
-      <div className="stratActions"><button className="primary small" onClick={()=>openRoadmap(s.id)}>Open roadmap<ArrowRight size={14}/></button><button className="ghostSmall" onClick={()=>setActiveId(s.id)} disabled={s.id===activeId}>{s.id===activeId?'Active plan':'Set as my plan'}</button><label className="cmp"><input type="checkbox" checked={compared.includes(s.id)} onChange={()=>toggle(s.id)}/>Compare</label></div>
-    </article>)}</div>
+    {TRACKS.map(t=>{const list=strategies.filter(s=>s.track===t.id);if(!list.length) return null;return <section key={t.id} className="trackSection">
+      <div className="trackHead"><span className="trackIcon"><t.icon size={17}/></span><div><h3>{t.label}</h3><p>{t.blurb}</p></div></div>
+      <div className="routeRows">{list.map(s=><article key={s.id} className={`routeRow ${s.id===activeId?'active':''}`}>
+        <div className="rrMain"><div className="rrTitle"><b>{shortName(s)}</b><LevelBadge level={s.level}/>{s.id===activeId&&<span className="myPlan"><Check size={12}/>My plan</span>}</div><RouteChips route={s.route} compact/><p>{s.reasons[0]}</p></div>
+        <dl className="rrFacts"><div><dt>PR window</dt><dd>{s.prWindow.label}</dd></div><div><dt>Gov. charges</dt><dd>{money(s.costs.government)}</dd></div></dl>
+        <div className="rrActions"><button className="primary small" onClick={()=>openPlan(s.id)}>{s.id===activeId?'View plan':'Use this route'}<ArrowRight size={14}/></button><label className="cmp"><input type="checkbox" checked={compared.includes(s.id)} onChange={()=>toggle(s.id)}/>Compare</label></div>
+      </article>)}</div>
+    </section>})}
+    {(plan.ruledOut||[]).length>0&&<section className="card ruledCard"><div className="cardHead"><div><span className="kicker">Not shown</span><h3>Routes ruled out for you</h3></div><CircleX/></div>{plan.ruledOut.map(r=><div key={r.id} className="ruledRow"><div><b>{r.name}</b>{r.route&&<RouteChips route={r.route} compact/>}</div><p>{r.reason}</p></div>)}</section>}
     {rows.length>=2&&<section className="card compareCard"><div className="cardHead"><div><span className="kicker">Side by side</span><h3>Compare {rows.length} routes</h3></div><Scale/></div>
       <div className="compareScroll"><table className="compareTable"><thead><tr><th/>{rows.map(s=><th key={s.id}><b>{s.name}</b><LevelBadge level={s.level}/></th>)}</tr></thead><tbody>
         <tr><th>Route</th>{rows.map(s=><td key={s.id}><RouteChips route={s.route} compact/></td>)}</tr>
         <tr><th>Earliest PR</th>{rows.map(s=><td key={s.id}><b>{s.prWindow.label}</b>{s.monthsToPr!=null&&<small>about {s.monthsToPr} months</small>}</td>)}</tr>
         <tr><th>Government charges</th>{rows.map(s=><td key={s.id}>{money(s.costs.government)}</td>)}</tr>
-        <tr><th>Other costs (approx.)</th>{rows.map(s=><td key={s.id}>{money(s.costs.otherLow)} to {money(s.costs.otherHigh)}</td>)}</tr>
         <tr><th>Depends on</th>{rows.map(s=><td key={s.id}><ul>{s.dependencies.map(d=><li key={d}>{d}</li>)}</ul></td>)}</tr>
-        <tr><th>Flexibility</th>{rows.map(s=><td key={s.id}>{s.flexibility||'–'}</td>)}</tr>
-        <tr><th>Obligation</th>{rows.map(s=><td key={s.id}>{s.obligation||'–'}</td>)}</tr>
-        <tr><th>Points</th>{rows.map(s=><td key={s.id}>{s.points?<>{s.points.now} now{s.points.withNomination?` · ${s.points.withNomination} with nomination`:''}{s.points.target?` · target ${s.points.target}`:''}</>:'Not points tested'}</td>)}</tr>
+        <tr><th>Obligation</th>{rows.map(s=><td key={s.id}>{s.obligation||'None'}</td>)}</tr>
         <tr><th>Main risk</th>{rows.map(s=><td key={s.id}>{s.risks[0]?.title||'None flagged'}</td>)}</tr>
-        <tr><th>Steps</th>{rows.map(s=><td key={s.id}>{s.milestones.length} milestones</td>)}</tr>
       </tbody></table></div></section>}
+    <button className="moreBtn standalone" onClick={()=>setShowTree(!showTree)}>{showTree?<ChevronUp size={15}/>:<GitBranch size={15}/>}{showTree?'Hide the decision tree':'How your answers lead to these routes (decision tree)'}</button>
+    {showTree&&<DecisionTree tree={plan.tree} strategies={strategies} openRoadmap={openPlan}/>}
   </>
 }
 
-/* ---------- roadmap ---------- */
+/* ---------- plan and roadmap ---------- */
 function Gantt({strategy,deadlines,today}){
   const items=[...strategy.lanes.flatMap(l=>[l.start,l.end]),...strategy.milestones.flatMap(m=>[m.start,m.end])].filter(Boolean).map(d=>new Date(d+'T00:00:00').getTime())
   const t0=new Date(today+'T00:00:00').getTime()
@@ -206,32 +225,54 @@ function Gantt({strategy,deadlines,today}){
     <line x1={x(today)} x2={x(today)} y1={20} y2={H-8} className="gToday"/><text x={x(today)+4} y={H-12} className="gTodayText">Today</text>
   </svg><div className="ganttLegend"><span><i className="lg held"/>Visa held or projected</span><span><i className="lg processing"/>Processing (bridging visa)</span><span><i className="lg ms"/>Milestone window</span><span><i className="lg unc"/>Estimate depends on an invitation or decision</span><span><i className="lg dl"/>Hard deadline</span></div></div>
 }
-function Roadmap({plan,strategy,strategies,setActiveId,checks,toggleCheck,onJobsAction}){
-  const allTasks=strategy.milestones.flatMap(m=>m.tasks)
+function MilestoneItem({m,open,onToggle,checks,toggleCheck,onJobsAction,last}){
+  const Icon=KIND_ICON[m.kind]||Signpost
+  const doneCount=m.tasks.filter(t=>checks[t.id]).length
+  const complete=m.tasks.length>0&&doneCount===m.tasks.length
+  return <article className={`msCard ${m.status} ${complete?'complete':''} ${m.kind==='pr'?'prMs':''} ${open?'open':''}`}>
+    <div className="msRail"><span className="msIcon" style={m.visa?{'--c':visaColor(m.visa)}:undefined}>{complete?<Check size={16}/>:<Icon size={16}/>}</span>{!last&&<i/>}</div>
+    <div className="msBody">
+      <button className="msHead" onClick={onToggle} aria-expanded={open}>
+        <div><span className="msDate">{fullDate(m.start)}{m.end!==m.start?` → ${fullDate(m.end)}`:''}</span><h4>{m.title}</h4></div>
+        <div className="msTags">{m.status==='now'&&<span className="nowTag">Now</span>}{m.deadline&&<span className="dlTag"><Clock3 size={11}/>Due {fmtDate(m.deadline,{day:'numeric',month:'short'})}</span>}{m.uncertain&&<span className="estTag">Estimate</span>}{m.tasks.length>0&&<span className="taskCount">{doneCount}/{m.tasks.length}</span>}{open?<ChevronUp size={16}/>:<ChevronDown size={16}/>}</div>
+      </button>
+      {open&&<div className="msDetail"><p>{m.detail}</p>
+        {m.tasks.length>0&&<ul className="taskList">{m.tasks.map(t=><li key={t.id} className={checks[t.id]?'checked':''}><label><input type="checkbox" checked={!!checks[t.id]} onChange={()=>toggleCheck(t.id)}/><span>{t.label}</span></label>{t.link&&<a href={t.link} target="_blank" rel="noreferrer" className="taskLink">Official page<ExternalLink size={11}/></a>}{t.action?.type==='jobs'&&<button className="taskAction" onClick={()=>onJobsAction(t.action)}><BriefcaseBusiness size={12}/>Find {t.action.location?.split(',')[0]} roles</button>}</li>)}</ul>}
+        <div className="msFoot">{m.cost?.amount!=null&&<span className="msCost"><Wallet size={12}/>{m.cost.approx?'About ':''}{money(m.cost.amount)} · {m.cost.label}</span>}{m.sources.map(s=><a key={s.url} href={s.url} target="_blank" rel="noreferrer">{s.label}<ExternalLink size={11}/></a>)}</div>
+      </div>}
+    </div></article>
+}
+function PlanView({plan,strategy,strategies,setActiveId,checks,toggleCheck,onJobsAction,goRoutes}){
+  const ms=strategy.milestones
+  const allTasks=ms.flatMap(m=>m.tasks)
   const done=allTasks.filter(t=>checks[t.id]).length
-  const nextMs=strategy.milestones.find(m=>m.status!=='done'&&!m.tasks.every(t=>checks[t.id]))
-  const events=[...strategy.milestones.map(m=>({date:m.deadline||m.start,title:`${m.deadline?'Deadline: ':''}${m.title}`,detail:m.detail})),...(plan.deadlines||[]).map(d=>({date:d.date,title:d.title,detail:d.detail}))]
+  const pending=ms.filter(m=>m.status!=='done'&&!(m.tasks.length&&m.tasks.every(t=>checks[t.id])))
+  const nextIds=pending.slice(0,3).map(m=>m.id)
+  const [openIds,setOpenIds]=useState(()=>new Set(nextIds.slice(0,1)))
+  const [showAll,setShowAll]=useState(false)
+  const toggle=id=>setOpenIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
+  const events=[...ms.map(m=>({date:m.deadline||m.start,title:`${m.deadline?'Deadline: ':''}${m.title}`,detail:m.detail})),...(plan.deadlines||[]).map(d=>({date:d.date,title:d.title,detail:d.detail}))]
+  const visible=showAll?ms:ms.filter(m=>nextIds.includes(m.id))
+  const sameTrack=strategies.filter(s=>s.track===strategy.track&&s.id!==strategy.id)
   return <>
-    <div className="roadPicker">{strategies.map(s=><button key={s.id} className={s.id===strategy.id?'on':''} onClick={()=>setActiveId(s.id)}><RouteChips route={s.route} compact/><span>{s.name}</span></button>)}</div>
-    <section className="card roadHead">
-      <div className="roadTitle"><div><span className="kicker">Active plan</span><h3>{strategy.name}</h3><RouteChips route={strategy.route}/></div><LevelBadge level={strategy.level}/></div>
-      <div className="roadMeta"><div><span>PR window</span><b>{strategy.prWindow.label}</b></div><div><span>Progress</span><b>{done} of {allTasks.length} tasks</b><div className="prog"><i style={{width:`${allTasks.length?done/allTasks.length*100:0}%`}}/></div></div><div><span>Next milestone</span><b>{nextMs?.title||'All set'}</b><small>{nextMs?fmtDate(nextMs.start,{day:'numeric',month:'short',year:'numeric'}):''}</small></div></div>
-      <div className="roadActions"><button className="ghostSmall" onClick={()=>downloadIcs(events,`pathway-${strategy.id}.ics`)}><CalendarPlus size={15}/>Add to calendar</button><button className="ghostSmall" onClick={()=>window.print()}><Printer size={15}/>Print or save PDF</button></div>
+    <TrackCards plan={plan} strategies={strategies} activeId={strategy.id} onPick={setActiveId}/>
+    <section className="card planHead">
+      <div className="phTop"><div><span className="kicker">{TRACKS.find(t=>t.id===strategy.track)?.label} route</span><h3>{shortName(strategy)}</h3><RouteChips route={strategy.route}/></div><LevelBadge level={strategy.level}/></div>
+      <p className="phWhy">{strategy.reasons[0]}</p>
+      {sameTrack.length>0&&<div className="altRoutes"><span>Other {TRACKS.find(t=>t.id===strategy.track)?.label.toLowerCase()} routes:</span>{sameTrack.map(s=><button key={s.id} onClick={()=>setActiveId(s.id)}>{shortName(s)}</button>)}<button className="linkish" onClick={goRoutes}>Compare all</button></div>}
+      <div className="roadMeta"><div><span>PR window</span><b>{strategy.prWindow.label}</b></div><div><span>Government charges</span><b>{money(strategy.costs.government)}</b><small>+ about {money(strategy.costs.otherLow)} to {money(strategy.costs.otherHigh)} other</small></div><div><span>Your progress</span><b>{done} of {allTasks.length} tasks</b><div className="prog"><i style={{width:`${allTasks.length?done/allTasks.length*100:0}%`}}/></div></div></div>
     </section>
-    <section className="card"><div className="cardHead"><div><span className="kicker">Timeline</span><h3>From today to permanent residence</h3></div></div><Gantt strategy={strategy} deadlines={plan.deadlines||[]} today={plan.today}/></section>
     <div className="roadGrid">
-      <section className="msList">{strategy.milestones.map((m,i)=>{const Icon=KIND_ICON[m.kind]||Signpost;const mdone=m.tasks.length>0&&m.tasks.every(t=>checks[t.id]);return <article key={m.id} className={`msCard ${m.status} ${mdone?'complete':''} ${m.kind==='pr'?'prMs':''}`}>
-        <div className="msRail"><span className="msIcon" style={m.visa?{'--c':visaColor(m.visa)}:undefined}>{mdone?<Check size={16}/>:<Icon size={16}/>}</span>{i<strategy.milestones.length-1&&<i/>}</div>
-        <div className="msBody">
-          <div className="msTop"><span className="msDate">{fullDate(m.start)}{m.end!==m.start?` → ${fullDate(m.end)}`:''}</span>{m.status==='now'&&<span className="nowTag">Now</span>}{m.uncertain&&<span className="estTag">Estimate</span>}{m.deadline&&<span className="dlTag"><Clock3 size={11}/>Deadline {fullDate(m.deadline)}</span>}</div>
-          <h4>{m.title}</h4><p>{m.detail}</p>
-          {m.tasks.length>0&&<ul className="taskList">{m.tasks.map(t=><li key={t.id} className={checks[t.id]?'checked':''}><label><input type="checkbox" checked={!!checks[t.id]} onChange={()=>toggleCheck(t.id)}/><span>{t.label}</span></label>{t.link&&<a href={t.link} target="_blank" rel="noreferrer" className="taskLink">Official page<ExternalLink size={11}/></a>}{t.action?.type==='jobs'&&<button className="taskAction" onClick={()=>onJobsAction(t.action)}><BriefcaseBusiness size={12}/>Search {t.action.location?.split(',')[0]} roles</button>}</li>)}</ul>}
-          <div className="msFoot">{m.cost?.amount!=null&&<span className="msCost"><Wallet size={12}/>{m.cost.approx?'About ':''}{money(m.cost.amount)} · {m.cost.label}</span>}{m.sources.map(s=><a key={s.url} href={s.url} target="_blank" rel="noreferrer">{s.label}<ExternalLink size={11}/></a>)}</div>
-        </div></article>})}</section>
+      <section className="msList">
+        <div className="msListHead"><h3>{showAll?`All ${ms.length} steps`:'Your next steps'}</h3><div className="roadActions"><button className="ghostSmall" onClick={()=>downloadIcs(events,`pathway-${strategy.id}.ics`)}><CalendarPlus size={15}/>Add to calendar</button><button className="ghostSmall" onClick={()=>window.print()}><Printer size={15}/>Print</button></div></div>
+        {visible.map((m,i)=><MilestoneItem key={m.id} m={m} open={openIds.has(m.id)} onToggle={()=>toggle(m.id)} checks={checks} toggleCheck={toggleCheck} onJobsAction={onJobsAction} last={i===visible.length-1}/>)}
+        <button className="moreBtn standalone" onClick={()=>setShowAll(!showAll)}>{showAll?<ChevronUp size={15}/>:<ChevronDown size={15}/>}{showAll?'Show only the next steps':`Show all ${ms.length} steps to permanent residence`}</button>
+        {showAll&&<section className="card"><div className="cardHead"><div><span className="kicker">Timeline</span><h3>From today to permanent residence</h3></div></div><Gantt strategy={strategy} deadlines={plan.deadlines||[]} today={plan.today}/></section>}
+      </section>
       <div className="roadSide">
-        <section className="card"><span className="kicker">Why this route</span><ul className="sideList">{strategy.reasons.map((r,i)=><li key={i}>{r}</li>)}</ul><span className="kicker">It depends on</span><ul className="sideList dep">{strategy.dependencies.map(d=><li key={d}>{d}</li>)}</ul></section>
-        <section className="card"><span className="kicker">Risks to manage</span>{strategy.risks.length?strategy.risks.map((r,i)=><div key={i} className={`riskItem ${r.level}`}><TriangleAlert size={15}/><div><b>{r.title}</b><p>{r.detail}</p></div></div>):<p className="muted">No specific risks flagged for this route.</p>}</section>
-        <section className="card"><span className="kicker">Cost breakdown</span><table className="costTable"><tbody>{strategy.costs.items.map((c,i)=><tr key={i}><td>{c.label}<small>{c.basis==='live'?`Live from Home Affairs · ${fullDate(c.checkedAt?.slice(0,10))}`:c.note}</small></td><td>{c.amountHigh?`${money(c.amount)}–${money(c.amountHigh)}`:money(c.amount)}</td></tr>)}</tbody><tfoot><tr><td>Government charges</td><td>{money(strategy.costs.government)}</td></tr></tfoot></table><p className="fine">Primary applicant only. Partners and children add charges. Employer-paid costs (nomination, SAF levy) are not included.</p></section>
+        <section className="card"><span className="kicker">Watch out for</span>{strategy.risks.length?strategy.risks.slice(0,3).map((r,i)=><div key={i} className={`riskItem ${r.level}`}><TriangleAlert size={15}/><div><b>{r.title}</b><p>{r.detail}</p></div></div>):<p className="muted">No specific risks flagged for this route.</p>}</section>
+        <section className="card"><span className="kicker">It depends on</span><ul className="sideList dep">{strategy.dependencies.map(d=><li key={d}>{d}</li>)}</ul></section>
+        <details className="card costDetails"><summary><span className="kicker">Cost breakdown</span><b>{money(strategy.costs.government)} in government charges</b></summary><table className="costTable"><tbody>{strategy.costs.items.map((c,i)=><tr key={i}><td>{c.label}<small>{c.basis==='live'?`Live from Home Affairs · ${fullDate(c.checkedAt?.slice(0,10))}`:c.note}</small></td><td>{c.amountHigh?`${money(c.amount)}–${money(c.amountHigh)}`:money(c.amount)}</td></tr>)}</tbody></table><p className="fine">Primary applicant only. Employer-paid costs are not included.</p></details>
       </div>
     </div>
   </>
@@ -266,34 +307,33 @@ function DecisionTree({tree,strategies,openRoadmap}){
 /* ---------- points lab ---------- */
 function PointsLab({plan,c,set}){
   const base=plan.points
-  const opts=plan.pointsOptions||[]
-  const current=Object.fromEntries(base.rows.map(r=>[r.id,r.points]))
-  const [sel,setSel]=useState({})
-  const pick=(id,choice)=>setSel(p=>({...p,[id]:choice}))
-  const expRow=base.rows.find(r=>r.id==='experience')
-  const factor={english:'english',auExperience:'experience',professionalYear:'professionalYear',naati:'naati',specialistEducation:'specialist',partner:'partner'}
-  let total=base.total,changes=[]
-  Object.entries(sel).forEach(([id,ch])=>{if(!ch) return;if(id==='nomination'){total+=ch.points;if(ch.points)changes.push(`${ch.label} +${ch.points}`);return}const f=factor[id];const was=current[f]??0;if(ch.points!==was){total+=ch.points-was;changes.push(`${opts.find(o=>o.id===id)?.label}: ${ch.label} (${ch.points-was>=0?'+':''}${ch.points-was})`)}})
-  const target=plan.strategies?.find(s=>s.id==='189')?.points?.target
-  const basis=plan.strategies?.find(s=>s.id==='189')?.points?.targetBasis
+  const opts=(plan.pointsOptions||[]).filter(o=>o.available!==false)
+  const rowPts=Object.fromEntries(base.rows.map(r=>[r.id,r.points]))
+  const initial=()=>Object.fromEntries(opts.map(o=>[o.id,o.current]))
+  const [sel,setSel]=useState(initial)
+  const choiceOf=(o,v)=>o.choices.find(ch=>ch.value===v)
+  let total=base.total;const changes=[]
+  opts.forEach(o=>{const v=sel[o.id];if(v===undefined||v===o.current) return;const ch=choiceOf(o,v);if(!ch) return;const was=o.factor?(rowPts[o.factor]??0):0;const d=ch.points-was;total+=d;if(d) changes.push(`${o.label}: ${ch.label} (${d>0?'+':''}${d})`)})
+  const s189=plan.strategies?.find(s=>s.id==='189')
+  const target=s189?.points?.target,basis=s189?.points?.targetBasis
   const round=plan.round
   const colors=['#0c6b58','#2a9d8f','#6b7fd7','#e4723b','#b0648a','#d1495b','#8ab17d','#e9c46a','#577590','#9aa6a2']
   return <div className="pointsGrid">
-    <section className="card"><div className="cardHead"><div><span className="kicker">Points today</span><h3>{base.total} points</h3></div><Calculator/></div>
+    <section className="card"><div className="cardHead"><div><span className="kicker">From your answers</span><h3>{base.total} points today</h3></div><Calculator/></div>
       <div className="stackBar">{base.rows.filter(r=>r.points>0).map((r,i)=><i key={r.id} style={{flex:r.points,background:colors[i%colors.length]}} title={`${r.label}: ${r.points}`}/>)}<b style={{left:`${Math.min(100,65/Math.max(100,base.total)*100)}%`}}>65</b></div>
-      <div className="ptRows">{base.rows.map(r=><div key={r.id} className={`ptRow ${r.status}`}><div><b>{r.label}</b><span>{r.basis}</span>{r.improve&&<em>{r.improve}</em>}</div><strong>{r.status==='unknown'?'?':r.points}<small>/{r.max}</small></strong></div>)}</div>
-      {base.unknown?.length>0&&<p className="evidenceCaution">Unknown: {base.unknown.join(', ')}. Fill these in to complete the total.</p>}
-      <a className="evidenceLink" href="https://immi.homeaffairs.gov.au/visas/working-in-australia/skillselect/points-table" target="_blank" rel="noreferrer">Home Affairs points table<ExternalLink size={12}/></a>
+      <div className="ptRows">{base.rows.filter(r=>r.points>0||r.status==='unknown'||r.improve).map(r=><div key={r.id} className={`ptRow ${r.status}`}><div><b>{r.label}</b><span>{r.basis}</span>{r.improve&&<em>{r.improve}</em>}</div><strong>{r.status==='unknown'?'?':r.points}<small>/{r.max}</small></strong></div>)}</div>
+      {base.unknown?.length>0&&<p className="evidenceCaution">Still unknown: {base.unknown.join(', ')}.</p>}
       <p className="reformNote"><TriangleAlert size={14}/>{plan.rulebook?.reformNote}</p>
     </section>
-    <section className="card"><div className="cardHead"><div><span className="kicker">What if</span><h3>Simulated total: <span className={total>=(target||65)?'good':'warn'}>{total}</span></h3></div><SlidersHorizontal/></div>
-      {opts.filter(o=>o.available!==false).map(o=><div key={o.id} className="whatIf"><span>{o.label}</span><div className="seg">{o.choices.map(ch=>{const isSel=sel[o.id]?sel[o.id].value===ch.value:(o.id==='nomination'?ch.value==='':false);return <button key={String(ch.value)} className={isSel?'on':''} onClick={()=>pick(o.id,ch)} title={ch.detail}>{ch.label}<small>{ch.points}</small></button>})}</div></div>)}
-      <div className="whatIfFoot">{changes.length?<p>{changes.join(' · ')}</p>:<p className="muted">Choose options to simulate. Your saved answers stay unchanged.</p>}<button className="ghostSmall" onClick={()=>setSel({})}>Reset</button></div>
-      <div className="targetBox"><div><span className="kicker">189 target</span><b>{target?`${target} (${basis==='user'?'your target':'latest published minimum'})`:'No published minimum for your occupation'}</b><small>{round?.date?`Latest round ${round.date} · ${round.invitations?.toLocaleString?.()||''} invitations`:'Round data unavailable'}</small></div><label>Set my own target<input type="number" min={65} max={140} step={5} value={c.targetPoints||''} placeholder="e.g. 90" onChange={e=>set(p=>({...p,targetPoints:e.target.value===''?null:Number(e.target.value)}))}/></label></div>
+    <section className="card"><div className="cardHead"><div><span className="kicker">What if</span><h3>{total===base.total?<>{base.total} points</>:<>{base.total} → <span className={total>base.total?'good':'warn'}>{total}</span> points</>}</h3></div><SlidersHorizontal/></div>
+      <p className="whatIfIntro">Starts from your saved answers. Change anything to see the effect; your answers stay as they are.</p>
+      {opts.map(o=><div key={o.id} className="whatIf"><span>{o.label}</span><div className="seg">{o.choices.map(ch=>{const on=sel[o.id]===ch.value;return <button key={String(ch.value)} className={`${on?'on':''} ${o.current===ch.value?'saved':''}`} onClick={()=>setSel(p=>({...p,[o.id]:ch.value}))} title={ch.detail}>{ch.label}<small>{ch.points}</small></button>})}</div></div>)}
+      <div className="whatIfFoot">{changes.length?<p>{changes.join(' · ')}</p>:<p className="muted">No changes yet.</p>}<button className="ghostSmall" onClick={()=>setSel(initial())}>Reset</button></div>
+      <div className="targetBox"><div><span className="kicker">189 target</span><b>{target?`${target} (${basis==='user'?'your target':'latest published minimum'})`:'No published minimum for your occupation'}</b><small>{round?.date?`Latest round ${round.date}`:'Round data unavailable right now'}</small></div><label>Set my own target<input type="number" min={65} max={140} step={5} value={c.targetPoints||''} placeholder="e.g. 90" onChange={e=>set(p=>({...p,targetPoints:e.target.value===''?null:Number(e.target.value)}))}/></label></div>
     </section>
     <section className="card wideCard"><div className="cardHead"><div><span className="kicker">Points over time</span><h3>How age and experience move your score</h3></div><Hourglass/></div>
-      <div className="chart tall"><ResponsiveContainer width="100%" height="100%"><AreaChart data={plan.pointsTimeline||[]} margin={{top:10,right:20,bottom:0,left:-10}}><defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0c6b58" stopOpacity={0.35}/><stop offset="100%" stopColor="#0c6b58" stopOpacity={0.02}/></linearGradient></defs><CartesianGrid vertical={false} stroke="rgba(20,30,35,.08)"/><XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} interval={3}/><YAxis domain={[40,'dataMax+10']} tickLine={false} axisLine={false} fontSize={11}/><Tooltip formatter={(v,n)=>[v,n==='points'?'189 (no nomination)':n==='with190'?'With 190 nomination':'With 491 nomination']}/><Area type="stepAfter" dataKey="with491" stroke="#b0648a" fill="none" strokeDasharray="4 4"/><Area type="stepAfter" dataKey="with190" stroke="#2a9d8f" fill="none" strokeDasharray="4 4"/><Area type="stepAfter" dataKey="points" stroke="#0c6b58" strokeWidth={2.5} fill="url(#pg)"/><ReferenceLine y={65} stroke="#e4723b" strokeDasharray="3 3" label={{value:'Pass mark 65',position:'insideTopLeft',fontSize:11,fill:'#b45a2c'}}/>{target&&<ReferenceLine y={target} stroke="#132522" strokeDasharray="6 3" label={{value:`Target ${target}`,position:'insideTopRight',fontSize:11}}/>}</AreaChart></ResponsiveContainer></div>
-      <p className="fine">Assumes continuous skilled employment from {fullDate(plan.context?.workStart)} and no other changes. Dashed lines add 190 (+5) or 491 (+15) nomination points.</p>
+      <div className="chart tall"><ResponsiveContainer width="100%" height="100%"><AreaChart data={plan.pointsTimeline||[]} margin={{top:10,right:20,bottom:0,left:-10}}><defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0c6b58" stopOpacity={0.35}/><stop offset="100%" stopColor="#0c6b58" stopOpacity={0.02}/></linearGradient></defs><CartesianGrid vertical={false} stroke="rgba(20,30,35,.08)"/><XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} interval={3}/><YAxis domain={[40,'dataMax+10']} tickLine={false} axisLine={false} fontSize={11}/><Tooltip formatter={(v,n)=>[v,n==='points'?'189 (no nomination)':n==='with190'?'With 190 nomination':'With 491 nomination']}/><Area isAnimationActive={false} type="stepAfter" dataKey="with491" stroke="#b0648a" fill="none" strokeDasharray="4 4"/><Area isAnimationActive={false} type="stepAfter" dataKey="with190" stroke="#2a9d8f" fill="none" strokeDasharray="4 4"/><Area isAnimationActive={false} type="stepAfter" dataKey="points" stroke="#0c6b58" strokeWidth={2.5} fill="url(#pg)"/><ReferenceLine y={65} stroke="#e4723b" strokeDasharray="3 3" label={{value:'Pass mark 65',position:'insideTopLeft',fontSize:11,fill:'#b45a2c'}}/>{target&&<ReferenceLine y={target} stroke="#132522" strokeDasharray="6 3" label={{value:`Target ${target}`,position:'insideTopRight',fontSize:11}}/>}</AreaChart></ResponsiveContainer></div>
+      <p className="fine">Assumes skilled work from {fullDate(plan.context?.workStart)} with no other changes. Dashed lines add 190 (+5) or 491 (+15) nomination points.</p>
     </section>
   </div>
 }

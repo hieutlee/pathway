@@ -182,6 +182,19 @@ ASSESSORS = {
                 "weeks": (2, 8), "professionalYear": False},
 }
 
+# Field of study decides which assessing authority Pathway shows. The nominated occupation
+# is what the authority finally assesses, so the UI asks the person to confirm it.
+FIELDS_OF_STUDY = [
+    ("engineering", "Engineering", "engineering"),
+    ("ict", "IT, computing or data science", "ict"),
+    ("accounting", "Accounting or finance", "accounting"),
+    ("nursing", "Nursing or midwifery", "nursing"),
+    ("teaching", "Teaching", "teaching"),
+    ("trades", "Trade qualification", "trades"),
+    ("other", "Other field (business, science, arts, health...)", "general"),
+]
+FIELD_TO_ASSESSOR = {value: key for value, _, key in FIELDS_OF_STUDY}
+
 APPROX_COSTS = {
     "englishTest": (410, 480, "IELTS or PTE Academic, one sitting (approximate; check the test provider)"),
     "professionalYear": (10000, 16000, "Professional Year program, about 44 weeks including an internship (approximate)"),

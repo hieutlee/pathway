@@ -8,7 +8,7 @@ TODAY = date(2026, 10, 8)
 PROFILE = {"location": "Brisbane, QLD", "visa": "Student visa (subclass 500)", "visaExpiry": "2027-02-28", "occupation": "Mechatronics Engineer",
            "careerFamily": "Mechatronics and automation", "anzsco": "233999", "education": "Bachelor of Engineering (Honours)"}
 CIRC = {"dob": "2001-05-14", "qualification": "bachelor", "auQualification": True, "studyState": "QLD", "courseCompletion": "2026-11-20",
-        "englishLevel": "proficient", "skillsAssessment": "none", "partner": "single", "regional": "maybe", "employer": "none", "employedInOccupation": "no"}
+        "englishLevel": "proficient", "skillsAssessment": "none", "partner": "single", "regional": "maybe", "employer": "", "employedInOccupation": "no"}
 LIVE_UNPUBLISHED = {"round": {"date": "4 June 2026", "invitations": 10000, "minimumPoints": None, "occupationStatus": "not_published"}}
 LIVE_PUBLISHED = {"round": {"date": "4 June 2026", "invitations": 10000, "minimumPoints": 85, "occupationStatus": "published"}}
 
@@ -59,12 +59,14 @@ def test_partner_route_only_with_citizen_partner_and_regional_preference_respect
     assert not any(s["id"] == "partner" for s in plan()["strategies"])
     p = plan({"partner": "partner_citizen_pr", "partnerRelationship": "married", "regional": "no"})
     assert p["strategies"][0]["id"] == "partner"
-    assert next(s for s in p["strategies"] if s["id"].startswith("491"))["level"] == "Not preferred"
+    assert not any(s["id"].startswith("491") for s in p["strategies"])
+    assert any(r["id"].startswith("491") and "regional" in r["reason"] for r in p["ruledOut"])
 
 
 def test_age_45_blocks_points_tested_routes():
     p = plan({"dob": "1980-01-01"})
-    assert next(s for s in p["strategies"] if s["id"] == "189")["level"] == "Not available"
+    assert not any(s["id"] == "189" for s in p["strategies"])
+    assert any(r["id"] == "189" for r in p["ruledOut"])
 
 
 def test_settled_status_returns_no_strategies():
@@ -79,9 +81,38 @@ def test_milestones_are_dated_and_ordered():
         assert all(m["end"] >= m["start"] for m in s["milestones"])
 
 
-def test_employer_status_changes_482_route():
-    assert next(s for s in plan()["strategies"] if s["id"] == "482-186")["level"] == "Depends on employer"
-    assert next(s for s in plan({"employer": "offer"})["strategies"] if s["id"] == "482-186")["level"] == "Strong"
+def test_employer_answer_controls_sponsored_track():
+    assert next(s for s in plan({"employer": ""})["strategies"] if s["id"] == "482-186")["level"] == "Depends on employer"
+    assert next(s for s in plan({"employer": "yes"})["strategies"] if s["id"] == "482-186")["level"] == "Strong"
+    no = plan({"employer": "no"})
+    assert all(s["track"] != "sponsored" for s in no["strategies"]) and "sponsored" not in no["tracks"]
+    assert any(r["id"] == "sponsored" for r in no["ruledOut"])
+
+
+def test_three_year_routes_ruled_out_when_485_ends_first():
+    p = plan({"employer": "yes"})
+    ids = {s["id"] for s in p["strategies"]}
+    assert "186-de" not in ids and "494-191" not in ids
+    reason = next(r["reason"] for r in p["ruledOut"] if r["id"] == "186-de")
+    assert "3 years" in reason and "482" in reason
+    # Someone who already has 3 years of experience keeps Direct Entry
+    p = plan({"employer": "yes", "auExperienceYears": 3, "employedInOccupation": "yes"})
+    assert any(s["id"] == "186-de" for s in p["strategies"])
+
+
+def test_field_of_study_picks_assessing_authority():
+    assert plan()["context"]["assessor"]["name"] == "Engineers Australia"
+    assert plan({"fieldOfStudy": "ict"})["context"]["assessor"]["name"] == "Australian Computer Society"
+    assert plan({"fieldOfStudy": "other"})["context"]["assessor"]["name"] == "VETASSESS"
+    data = plan(profile={"occupation": "Data Scientist", "careerFamily": "Data and analytics", "anzsco": "", "education": "Master of Data Science"})
+    assert data["context"]["field"] == "ict"
+
+
+def test_points_options_start_from_recorded_values_and_include_study_bonuses():
+    opts = {o["id"]: o for o in plan({"studyRegional": "yes"})["pointsOptions"]}
+    assert opts["english"]["current"] == "proficient"
+    assert opts["regionalStudy"]["current"] is True and opts["australianStudy"]["current"] is True
+    assert plan({"studyRegional": "yes"})["points"]["total"] == 75
 
 
 def test_decision_tree_highlights_answers():

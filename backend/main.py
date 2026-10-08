@@ -172,7 +172,7 @@ def migration_hints(text:str)->dict:
     lower=text.lower(); hints:dict[str,Any]={}; found=[]
     for name,(state,regional) in sorted(migration_rules.INSTITUTIONS.items(), key=lambda x:-len(x[0])):
         if re.search(rf'(?<![a-z]){re.escape(name)}(?![a-z])',lower):
-            hints.update(institution=(name.title().replace(" Of "," of ").replace(" The "," the ") if len(name)>4 else name.upper()), studyState=state, studyRegional="no" if regional=="check" else regional, auQualification=True)
+            hints.update(institution=(name.title().replace(" Of "," of ").replace(" The "," the ") if len(name)>4 else name.upper()), studyState=state, studyRegional="no" if regional in {"check","no"} else "yes", auQualification=True)
             if regional=="check": hints["studyRegionalNote"]="This institution has metropolitan and regional campuses. Confirm your campus."
             found.append("Australian institution")
             break
@@ -189,8 +189,15 @@ def migration_hints(text:str)->dict:
         score=float(ielts.group(1)); hints["englishLevel"]="superior" if score>=8 else "proficient" if score>=7 else "competent" if score>=6 else ""
         hints["englishNote"]=f"IELTS {score:g} found. Points depend on every band, so confirm each score."
     elif pte:
-        score=int(pte.group(1)); hints["englishLevel"]="superior" if score>=79 else "proficient" if score>=65 else "competent" if score>=50 else ""
+        score=int(pte.group(1)); hints["englishLevel"]="superior" if score>=88 else "proficient" if score>=76 else "competent" if score>=54 else ""
         hints["englishNote"]=f"PTE {score} found. Points depend on each communicative skill, so confirm each score."
+    degree=re.search(r'(?:bachelor|master|diploma|doctor|graduate certificate|associate degree)[^\n]{0,90}',lower)
+    scope=degree.group(0) if degree else lower
+    for field,pattern in (("engineering",r'engineering|mechatronic|robotic'),("ict",r'information technology|computer science|computing|software|data science|data analytics|cyber|information systems'),
+                          ("accounting",r'accounting|accountancy|finance'),("nursing",r'nursing|midwifery'),("teaching",r'education|teaching'),("trades",r'certificate (?:iii|iv)|trade')):
+        if re.search(pattern,scope): hints["fieldOfStudy"]=field; found.append("field of study"); break
+    else:
+        if degree: hints["fieldOfStudy"]="other"
     if re.search(r'naati|credentialed community language|\bccl\b',lower): hints["naati"]=True
     if re.search(r'professional year',lower): hints["professionalYear"]=True
     if re.search(r'(?:subclass|visa)\s*485|temporary graduate',lower): hints["visa"]="Temporary Graduate visa (subclass 485)"

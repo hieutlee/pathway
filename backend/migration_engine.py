@@ -102,11 +102,11 @@ SETTLED = {"citizen", "pr", "189", "190", "191", "186", "858", "801", "100"}
 
 
 def occupation_family(profile: dict) -> str:
-    text = " ".join(str(profile.get(k) or "") for k in ("occupation", "careerFamily")).lower()
+    text = " ".join(str(profile.get(k) or "") for k in ("occupation", "careerFamily", "education")).lower()
     code = str(profile.get("anzsco") or "")
     if code.startswith("233") or code.startswith("2331") or re.search(r"engineer|mechatronic|robotic", text) and not re.search(r"software|data|network|cloud|devops", text):
         return "engineering"
-    if code.startswith("261") or code.startswith("262") or code.startswith("263") or re.search(r"software|developer|ict|data|cyber|network|cloud|programmer", text):
+    if code.startswith("261") or code.startswith("262") or code.startswith("263") or re.search(r"software|developer|\bict\b|\bit\b|information technology|computer science|computing|data scien|data analy|cyber|network|cloud|programmer", text):
         return "ict"
     if code.startswith("2211") or re.search(r"accountant|accounting|auditor", text):
         return "accounting"
@@ -116,7 +116,7 @@ def occupation_family(profile: dict) -> str:
         return "teaching"
     if re.search(r"electrician|plumber|carpenter|chef|cook|mechanic|fitter|welder|trade", text):
         return "trades"
-    return "general"
+    return "other"
 
 
 def state_of(location: str) -> str:
@@ -134,7 +134,7 @@ DEFAULT_CIRCUMSTANCES = {
     "auExperienceYears": 0, "overseasExperienceYears": 0, "employedInOccupation": "", "stateEmploymentMonths": 0,
     "regionalEmploymentMonths": 0, "professionalYear": False, "naati": False, "partner": "", "partnerRelationship": "",
     "relationshipMonths": 0, "regional": "", "preferredStates": [], "employer": "", "salary": None,
-    "sponsorMonths": 0, "currentVisaGrantDate": "", "previous485": False, "exceptionalTalent": False, "targetPoints": None,
+    "sponsorMonths": 0, "currentVisaGrantDate": "", "targetPoints": None, "fieldOfStudy": "",
 }
 
 
@@ -151,7 +151,9 @@ class Ctx:
         self.dob = parse_date(c.get("dob"))
         self.occupation = (self.profile.get("occupation") or "").strip() or "your occupation"
         self.anzsco = str(self.profile.get("anzsco") or "").strip()
-        self.family = occupation_family(self.profile)
+        field = (c.get("fieldOfStudy") or "").lower()
+        self.field = field if field in R.FIELD_TO_ASSESSOR else occupation_family(self.profile)
+        self.family = R.FIELD_TO_ASSESSOR[self.field]
         self.assessor = R.ASSESSORS[self.family]
         self.home_state = state_of(self.profile.get("location") or "")
         prefs = [s for s in (c.get("preferredStates") or []) if s in R.STATES]
@@ -187,7 +189,8 @@ class Ctx:
             self.assumptions.append(f"Skilled employment assumed to start around {label(self.work_start)} (about 3 months after {'graduation' if self.completion and self.completion >= self.today else 'today'}). The Jobs tab shows current openings.")
         self.partner = c.get("partner") or ""
         self.regional = (c.get("regional") or "").lower()
-        self.employer = (c.get("employer") or "").lower()
+        emp = (c.get("employer") or "").lower()
+        self.employer = "yes" if emp in {"yes", "offer", "sponsoring", "interested"} else "no" if emp in {"no", "none"} else ""
         self.salary = c.get("salary")
 
     def _guess_qualification(self):
@@ -285,7 +288,7 @@ def points_at(ctx: Ctx, on: date | None = None, nomination: str | None = None, o
     qp = R.QUALIFICATION_POINTS.get(q)
     row("qualification", "Qualification", qp, 20, {"doctorate": "Doctorate", "masters_research": "Masters (15, same as bachelor)", "masters_coursework": "Masters (15, same as bachelor)", "bachelor": "Bachelor or higher", "diploma": "Diploma", "trade": "Trade qualification"}.get(q, "Confirm your highest qualification"))
 
-    ast = c.get("australianStudy")
+    ast = o.get("australianStudy", c.get("australianStudy"))
     if ast is None:
         ast = bool(ctx.au_qualification and q in {"bachelor", "masters_coursework", "masters_research", "doctorate"})
     row("australianStudy", "Australian study requirement", 5 if ast else 0, 5, "At least 2 academic years (92 weeks) of CRICOS study in Australia" if ast else "Not claimed")
@@ -296,7 +299,7 @@ def points_at(ctx: Ctx, on: date | None = None, nomination: str | None = None, o
         improve="12 month program; about 44 weeks including an internship" if not py and ctx.assessor.get("professionalYear") else None)
     naati = o.get("naati", c.get("naati"))
     row("naati", "Credentialed community language (NAATI CCL)", 5 if naati else 0, 5, "NAATI CCL passed" if naati else "Not claimed", improve="One test in a language you speak (for example Vietnamese)" if not naati else None)
-    reg = c.get("studyRegional") in {"cat2", "cat3"}
+    reg = o.get("regionalStudy", c.get("studyRegional") in {"yes", "cat2", "cat3"})
     row("regionalStudy", "Study in regional Australia", 5 if reg else 0, 5, "Studied and lived in a designated regional area for 2 academic years" if reg else "Not claimed")
     partner = o.get("partner", ctx.partner)
     pp = R.PARTNER_POINTS.get(partner)
@@ -322,17 +325,25 @@ def points_timeline(ctx: Ctx, months=72, step=3):
 
 
 def points_options(ctx: Ctx):
-    """What-if choices for the points lab. The frontend recomputes totals from these."""
+    """What-if choices for the points lab, each with the value already recorded so the simulator starts from it."""
+    base = {r["id"]: r for r in points_at(ctx)["rows"]}
     au, os_ = ctx.au_exp, ctx.os_exp
     au_opts = sorted({round(au, 1), 1, 3, 5, 8} - {x for x in (1, 3, 5, 8) if x < au})
+    yes_no = lambda pts, yes="Yes": [{"value": False, "label": "No", "points": 0}, {"value": True, "label": yes, "points": pts}]
     return [
-        {"id": "english", "label": "English", "choices": [{"value": k, "label": f"{k.title()}", "points": v, "detail": R.ENGLISH_LEVELS[k]} for k, v in R.ENGLISH_POINTS.items()]},
-        {"id": "auExperience", "label": "Australian skilled employment (years)", "choices": [{"value": y, "label": f"{y:g} years", "points": _exp_points(y, os_)[2], "detail": f"Combined with {os_:g} overseas years, capped at 20"} for y in au_opts]},
-        {"id": "professionalYear", "label": "Professional Year", "available": bool(ctx.assessor.get("professionalYear")), "choices": [{"value": False, "label": "No", "points": 0}, {"value": True, "label": "Completed", "points": 5}]},
-        {"id": "naati", "label": "NAATI CCL", "choices": [{"value": False, "label": "No", "points": 0}, {"value": True, "label": "Passed", "points": 5}]},
-        {"id": "specialistEducation", "label": "STEM research degree in Australia", "choices": [{"value": False, "label": "No", "points": 0}, {"value": True, "label": "Completed", "points": 10}]},
-        {"id": "partner", "label": "Partner", "choices": [{"value": k, "label": l, "points": R.PARTNER_POINTS[k]} for k, l in (("single", "Single"), ("partner_citizen_pr", "Partner is citizen or PR"), ("partner_skilled", "Skilled partner"), ("partner_competent_english", "Partner competent English"), ("partner_other", "Partner, no claim"))]},
-        {"id": "nomination", "label": "Nomination", "choices": [{"value": "", "label": "189 (none)", "points": 0}, {"value": "190", "label": "190 state", "points": 5}, {"value": "491", "label": "491 regional", "points": 15}]},
+        {"id": "english", "factor": "english", "label": "English", "current": ctx.english if ctx.english in R.ENGLISH_POINTS else None,
+         "choices": [{"value": k, "label": k.title(), "points": v, "detail": R.ENGLISH_LEVELS[k]} for k, v in R.ENGLISH_POINTS.items()]},
+        {"id": "auExperience", "factor": "experience", "label": "Australian skilled employment", "current": round(au, 1),
+         "choices": [{"value": y, "label": f"{y:g} yrs", "points": _exp_points(y, os_)[2], "detail": f"Combined with {os_:g} overseas years, capped at 20"} for y in au_opts]},
+        {"id": "australianStudy", "factor": "australianStudy", "label": "Australian study (2 academic years)", "current": base["australianStudy"]["points"] > 0, "choices": yes_no(5, "Met")},
+        {"id": "regionalStudy", "factor": "regionalStudy", "label": "Studied at a regional campus", "current": base["regionalStudy"]["points"] > 0, "choices": yes_no(5)},
+        {"id": "professionalYear", "factor": "professionalYear", "label": "Professional Year", "available": bool(ctx.assessor.get("professionalYear")), "current": bool(ctx.c.get("professionalYear")), "choices": yes_no(5, "Completed")},
+        {"id": "naati", "factor": "naati", "label": "NAATI CCL", "current": bool(ctx.c.get("naati")), "choices": yes_no(5, "Passed")},
+        {"id": "specialistEducation", "factor": "specialist", "label": "STEM research degree in Australia", "current": bool(ctx.c.get("specialistEducation")), "choices": yes_no(10, "Completed")},
+        {"id": "partner", "factor": "partner", "label": "Partner", "current": ctx.partner or None,
+         "choices": [{"value": k, "label": l, "points": R.PARTNER_POINTS[k]} for k, l in (("single", "Single"), ("partner_citizen_pr", "Citizen or PR partner"), ("partner_skilled", "Skilled partner"), ("partner_competent_english", "Partner competent English"), ("partner_other", "Partner, no claim"))]},
+        {"id": "nomination", "factor": None, "label": "Nomination", "current": "",
+         "choices": [{"value": "", "label": "None (189)", "points": 0}, {"value": "190", "label": "190 state", "points": 5}, {"value": "491", "label": "491 regional", "points": 15}]},
     ]
 
 
@@ -384,7 +395,6 @@ def visa_checks(ctx: Ctx, code: str, pts_now: int) -> list[dict]:
         e, d = english_state(ctx, "competent")
         rows.append(crit("english", "English: " + R.ENGLISH_485, "met" if ctx.english_exempt_passport else ("later" if e != "unmet" else "unmet"), "485 uses its own test rules: a result taken within 12 months, single in-centre sitting" if not ctx.english_exempt_passport else d))
         rows.append(crit("timing", "Lodge in Australia within 6 months of course completion", "later" if ctx.completion and ctx.completion >= ctx.today else ("met" if ctx.completion and months_between(ctx.completion, ctx.today) <= 6 else "unknown" if not ctx.completion else "unmet"), f"Completion {label(ctx.completion)}" if ctx.completion else "Add completion date"))
-        rows.append(crit("previous", "Not previously granted a Post-Higher Education 485 as primary", "unmet" if c.get("previous485") else "met", ""))
         rows.append(crit("health", "Overseas Visitor Health Cover and police certificates", "later", "Arrange before lodging. OSHC does not satisfy this."))
     elif code in {"189", "190", "491"}:
         e, d = english_state(ctx, "competent")
@@ -410,7 +420,7 @@ def visa_checks(ctx: Ctx, code: str, pts_now: int) -> list[dict]:
                 rows.append(crit("regional", "Willing to live and work in a designated regional area for 3 years", "met" if ctx.regional == "yes" else "unmet" if ctx.regional == "no" else "unknown", {"yes": "You said yes", "no": "You said no", "maybe": "You said maybe"}.get(ctx.regional, "Not answered")))
     elif code == "482":
         exp_now = ctx.au_exp + ctx.os_exp
-        rows += [crit("employer", "Approved employer willing to nominate you", {"sponsoring": "met", "offer": "met", "interested": "later", "none": "unmet"}.get(ctx.employer, "unknown"), {"sponsoring": "Employer sponsoring", "offer": "Offer with sponsorship", "interested": "Employer open to it", "none": "No sponsor yet"}.get(ctx.employer, "Not answered")),
+        rows += [crit("employer", "Approved employer willing to nominate you", {"yes": "met", "no": "unmet"}.get(ctx.employer, "unknown"), {"yes": "You have a sponsoring employer", "no": "No sponsoring employer"}.get(ctx.employer, "Not answered")),
                  crit("experience", "At least 1 year of relevant work experience", "met" if exp_now >= 1 else "later", f"{exp_now:g} years recorded"),
                  crit("salary", f"Core Skills: salary at least ${R.CSIT:,} and the market rate", "met" if ctx.salary and ctx.salary >= R.CSIT else "unmet" if ctx.salary else "unknown", f"${ctx.salary:,.0f} recorded" if ctx.salary else "Add expected salary"),
                  crit("english", "English (Core Skills generally IELTS 5 overall or equivalent)", "met" if ctx.english in {"competent", "proficient", "superior"} or ctx.english_exempt_passport else "unknown", ""),
@@ -423,14 +433,14 @@ def visa_checks(ctx: Ctx, code: str, pts_now: int) -> list[dict]:
                  crit("english", "Competent English", e, d),
                  crit("trt", "Transition: 2 years working for an approved sponsor on 482", "met" if float(ctx.c.get("sponsorMonths") or 0) >= 24 else "later" if ctx.visa == "482" else "unmet", f"{ctx.c.get('sponsorMonths') or 0} months with sponsor recorded"),
                  crit("de", "Direct Entry: 3 years of relevant experience and a positive assessment", "met" if exp_total >= 3 and a_state == "met" else "later", f"{exp_total:g} years, assessment {ctx.assessment or 'not recorded'}"),
-                 crit("employer", "Employer nomination at or above CSIT and market rate", {"sponsoring": "met", "offer": "met"}.get(ctx.employer, "unmet" if ctx.employer == "none" else "unknown"), "")]
+                 crit("employer", "Employer nomination at or above CSIT and market rate", {"yes": "met", "no": "unmet"}.get(ctx.employer, "unknown"), "")]
     elif code == "494":
         exp_total = ctx.au_exp + ctx.os_exp
         a_state, a_detail = assessment_state(ctx)
         rows += [crit("age", "Under 45", *age_state(ctx, 45)),
                  crit("experience", "3 years of full-time skilled experience", "met" if exp_total >= 3 else "later", f"{exp_total:g} years recorded"),
                  crit("assessment", "Positive skills assessment", a_state, a_detail),
-                 crit("employer", "Regional employer willing to sponsor", {"sponsoring": "met", "offer": "met", "interested": "later"}.get(ctx.employer, "unmet" if ctx.employer == "none" else "unknown"), ""),
+                 crit("employer", "Regional employer willing to sponsor", {"yes": "later", "no": "unmet"}.get(ctx.employer, "unknown"), "Your employer must be in a designated regional area"),
                  crit("regional", "Live and work in a designated regional area", "met" if ctx.regional == "yes" else "unmet" if ctx.regional == "no" else "unknown", "")]
     elif code == "191":
         rows += [crit("held", "Held 491 or 494 for 3 years while complying with regional conditions", "met" if ctx.visa in {"491", "494"} and parse_date(ctx.c.get("currentVisaGrantDate")) and months_between(parse_date(ctx.c.get("currentVisaGrantDate")), ctx.today) >= 36 else "later", ""),
@@ -442,9 +452,6 @@ def visa_checks(ctx: Ctx, code: str, pts_now: int) -> list[dict]:
         rows += [crit("sponsor", "Partner is an Australian citizen, PR or eligible NZ citizen", "met" if p else "unmet" if ctx.partner else "unknown", ""),
                  crit("relationship", "Married, registered, or de facto for 12 months", "met" if rel in {"married", "registered"} or months >= 12 else "later" if p else "unknown", f"{rel or 'relationship'} · {months:g} months"),
                  crit("8503", "No 'No Further Stay' (8503) condition", "unknown", "Check VEVO")]
-    elif code == "858":
-        rows += [crit("record", "Internationally recognised record of exceptional achievement", "met" if ctx.c.get("exceptionalTalent") else "unmet", ""),
-                 crit("nominator", "Australian nominator with a national reputation in your field", "unknown", "")]
     return rows
 
 
@@ -548,7 +555,7 @@ def graduate_bridge(b: Builder):
         deadline_note = "Lodge within 6 months of the completion date on your completion letter, while you hold a visa."
     a = ctx.age(deadline)
     exception = ctx.qualification in {"masters_research", "doctorate"}
-    eligible = not ctx.c.get("previous485") and (a is None or a < (50 if exception else 35)) and ctx.qualification in {"bachelor", "masters_coursework", "masters_research", "doctorate", ""}
+    eligible = (a is None or a < (50 if exception else 35)) and ctx.qualification in {"bachelor", "masters_coursework", "masters_research", "doctorate", ""}
     b.m("complete", "Finish your course and get the completion letter", comp, comp, "study",
         "The completion letter date starts the 485 clock. Your student visa usually stays valid for a short period after the course ends; work hours are unlimited after completion while it is valid.",
         [task("Request the official completion letter from your university"), task("Keep satisfactory attendance and progress until the end"), task("Check your visa expiry and conditions on VEVO", link=R.VEVO_URL)],
@@ -581,10 +588,10 @@ def graduate_bridge(b: Builder):
         f"Estimated {lo} to {hi} months after lodgement. The stay runs from the grant date, so every month of skilled work from here counts toward points and employer routes.",
         [task("Start or continue skilled full-time work in your occupation", action=jobs_action(ctx, note="Roles that build assessable skilled employment")),
          task("Keep payslips, contract and a duties statement for every job")], visa="485", uncertain=True)
-    if ctx.c.get("studyRegional") in {"cat2", "cat3"}:
-        extra = 1 if ctx.c.get("studyRegional") == "cat2" else 2
-        b.m("second485", f"Second 485 option: +{extra} year{'s' if extra > 1 else ''}", add_months(expiry, -3), expiry, "visa",
-            "You studied in a designated regional area. If you also live there while on your first 485 you may qualify for the second Post-Higher Education stream ($2,265).",
+    if ctx.c.get("studyRegional") in {"yes", "cat2", "cat3"}:
+        extra = 1
+        b.m("second485", "Second 485 option: 1 to 2 more years", add_months(expiry, -3), expiry, "visa",
+            "You studied at a regional campus. If you also live in a regional area while on your first 485 you may qualify for the second Post-Higher Education stream ($2,265): 1 extra year in places like the Gold Coast or Sunshine Coast, 2 in other regional areas. The timeline counts 1 year to stay conservative.",
             [task("Keep living in the regional area and keep evidence of address")], visa="485", uncertain=True)
         expiry = add_months(expiry, extra * 12)
     return grant, expiry
@@ -833,7 +840,7 @@ def strat_482(ctx: Ctx, pts_now):
     else:
         ready = employer_ready(ctx, 1)
         start482 = max(ready, ctx.today)
-        b.m("sponsor", "Find an employer willing to sponsor", ctx.today if ctx.employer in {"offer", "sponsoring"} else max(ctx.today, ctx.work_start), start482, "work",
+        b.m("sponsor", "Find an employer willing to sponsor", ctx.today if ctx.employer == "yes" else max(ctx.today, ctx.work_start), start482, "work",
             f"Core Skills stream: occupation on the CSOL and salary at least ${R.CSIT:,} (from 1 July 2026) and the market rate. At least 1 year of relevant experience. " + (jobs_signal_text(ctx) or ""),
             [task("Target employers that already sponsor (larger engineering, defence-adjacent private firms, manufacturers)", action=jobs_action(ctx, note="Sponsor-friendly roles")),
              task("Ask early: sponsorship cost is mostly employer-paid (nomination $330, SAF levy, sponsorship $420)"), task("Negotiate a salary at or above CSIT and the market rate")],
@@ -860,10 +867,8 @@ def strat_482(ctx: Ctx, pts_now):
     a = ctx.age(nominate)
     if a is not None and a >= 45:
         level = "Stretch"; reasons.append(f"You would be {a} at 186 lodgement; only exempt cases can proceed.")
-    if ctx.employer in {"sponsoring", "offer"}:
-        level = "Strong" if level == "Viable" else level; reasons.append("You recorded an employer willing to sponsor.")
-    elif ctx.employer == "interested":
-        reasons.append("An employer is open to sponsorship; secure it in writing.")
+    if ctx.employer == "yes":
+        level = "Strong" if level == "Viable" else level; reasons.append("You have an employer willing to sponsor.")
     else:
         level = "Depends on employer" if level == "Viable" else level; reasons.append("No sponsoring employer recorded yet.")
     reasons.append(f"Employer sponsored places rose to {R.PLANNING_2026_27['employer']:,} in 2026-27 (from {R.PLANNING_2026_27['previous']['employer']:,}).")
@@ -879,20 +884,32 @@ def strat_482(ctx: Ctx, pts_now):
                     flexibility="Low to medium: tied to an approved sponsor", obligation="Work for the sponsor until PR")
 
 
+def three_year_block(ctx: Ctx, ready: date, cover_end: date | None, what: str):
+    """Routes needing 3 years of experience are unreachable if the current or graduate visa ends first."""
+    if not cover_end or ready <= cover_end:
+        return None
+    exp_by_end = ctx.experience_at(cover_end)
+    years = exp_by_end[0] + exp_by_end[1]
+    via = "Your 485 gives up to 2 years (3 for research degrees), and time to find work comes out of that." if ctx.visa in {"500", "485"} else "Your current visa ends first."
+    return (f"{what} needs 3 years of relevant experience before you apply. You would have about {years:.1f} years when your visa coverage ends ({label(cover_end)}). "
+            f"{via} The realistic employer path is a 482 first, then 186 after 2 years with the sponsor.")
+
+
 def strat_186de(ctx: Ctx, pts_now):
     b = Builder(ctx, "s186de")
     grant485, cover_end = graduate_bridge(b)
     ready = max(employer_ready(ctx, 3), prepare_basics(b, need_points_english=False))
+    blocked = three_year_block(ctx, ready, cover_end, "186 Direct Entry")
     b.m("experience", "Build 3 years of post-qualification experience", max(ctx.today, ctx.work_start), ready, "work", "Direct Entry needs 3 years of relevant experience and a positive skills assessment.",
         [task("Keep skilled full-time work in the nominated occupation", action=jobs_action(ctx))])
     lo, hi = R.VISAS["186"]["processingMonths"]
     pr_lo, pr_hi = add_months(ready, 7), add_months(ready, 20)
     b.m("pr", "186 Direct Entry nomination and visa", ready, pr_hi, "pr", "Employer nominates at CSIT or above; Direct Entry processing 7 to 18 months.", [task("Lodge the 186 (Direct Entry)", link=R.VISA_URL["186"])], visa="186", uncertain=True)
     b.fee("186")
-    level = "Depends on employer" if ctx.employer not in {"offer", "sponsoring"} else "Viable"
+    level = "Depends on employer" if ctx.employer != "yes" else "Viable"
     reasons = [f"3 years of experience reached around {label(ready)}."]
-    if cover_end and ready > cover_end:
-        level = "Stretch"; reasons.append(f"That is after your projected visa coverage ends ({label(cover_end)}); a 482 is the usual bridge.")
+    if blocked:
+        level = "Not available"; reasons = [blocked]
     a = ctx.age(ready)
     if a is not None and a >= 45:
         level = "Not available"; reasons.append(f"Age {a} at lodgement.")
@@ -905,6 +922,7 @@ def strat_494(ctx: Ctx, pts_now):
     b = Builder(ctx, "s494")
     grant485, cover_end = graduate_bridge(b)
     ready = max(employer_ready(ctx, 3), prepare_basics(b, need_points_english=False))
+    blocked = three_year_block(ctx, ready, cover_end, "The 494")
     b.m("experience", "3 years of full-time experience, then a regional sponsor", max(ctx.today, ctx.work_start), ready, "work", "Casual work does not count toward the 3 years.",
         [task("Search regional employers", action=jobs_action(ctx, location="Toowoomba, QLD", note="Regional employer search"))])
     lo, hi = R.VISAS["494"]["processingMonths"]
@@ -916,8 +934,10 @@ def strat_494(ctx: Ctx, pts_now):
     pr_lo, pr_hi = add_months(e191, 3), add_months(e191, 12)
     b.m("pr", "Permanent residence (191)", e191, pr_hi, "pr", "After 3 years complying with the regional condition. You do not need to stay with the original employer for the 191.", visa="191", uncertain=True)
     b.fee("191")
-    level = "Not preferred" if ctx.regional == "no" else "Depends on employer"
-    reasons = ["Needs a regional employer and 3 years of experience before applying."]
+    level = "Not preferred" if ctx.regional == "no" else "Depends on employer" if ctx.employer != "yes" else "Viable"
+    reasons = ["You said you do not want to live regionally."] if ctx.regional == "no" else ["Needs a regional employer and 3 years of experience before applying."]
+    if blocked and level != "Not preferred":
+        level = "Not available"; reasons = [blocked.replace("a 482 first, then 186", "a 482 first (a regional employer can still sponsor it), then 186")]
     route = (["500", "485", "494", "191"] if ctx.visa == "500" else [ctx.visa, "494", "191"])
     return finalize(b, "494-191", "Regional employer · 494 to 191", route, "A regional employer sponsors you; permanent residence after 3 regional years.",
                     level, reasons, (pr_lo, pr_hi), dependencies=["Regional sponsoring employer", "3 years experience", "Skills assessment"], flexibility="Low", obligation="Regional area and sponsor")
@@ -947,18 +967,6 @@ def strat_partner(ctx: Ctx, pts_now):
                     [f"Relationship: {rel or 'not specified'}, {months:g} months."], (pr_lo, pr_hi), dependencies=["Genuine and continuing relationship", "Sponsor approval"], flexibility="High once granted", obligation="Relationship continues to the 801 decision")
 
 
-def strat_858(ctx: Ctx, pts_now):
-    b = Builder(ctx, "s858")
-    b.m("eoi", "National Innovation EOI", ctx.today, add_months(ctx.today, 1), "apply", "Show an internationally recognised record of exceptional achievement in a target sector.",
-        [task("Assemble evidence: awards, patents, publications, senior roles, media"), task("Secure an Australian nominator with a national reputation"), task("Lodge the EOI", link=R.VISA_URL["858"])], sources=[R.SECONDARY["858"]])
-    inv = add_months(ctx.today, 4)
-    pr_lo, pr_hi = add_months(inv, 3), add_months(inv, 12)
-    b.m("pr", "Invitation, then permanent visa", inv, pr_hi, "pr", "Lodge within 60 days of invitation.", visa="858", uncertain=True)
-    return finalize(b, "858", "Talent route · National Innovation 858", [ctx.visa, "858"] if ctx.visa not in {"unknown"} else ["858"],
-                    "Invitation-only permanent visa for exceptional achievers.", "Long shot", ["Priority 3 (Tier One sector) took most invitations in April to June 2026."], (pr_lo, pr_hi),
-                    dependencies=["Exceptional record", "Nominator", "Invitation"], flexibility="Highest", obligation="None")
-
-
 def finalize(b: Builder, sid, name, route, summary, level, reasons, pr_window, dependencies=(), points=None, flexibility="", obligation="", state=None):
     b.milestones.sort(key=lambda m: (m["start"], m["end"]))
     gov = sum(c["amount"] for c in b.costs if c["kind"] == "government" and c.get("amount"))
@@ -966,7 +974,8 @@ def finalize(b: Builder, sid, name, route, summary, level, reasons, pr_window, d
     other_hi = sum(c.get("amountHigh", c["amount"]) for c in b.costs if c["kind"] in {"assessment", "approx"} and c.get("amount"))
     rank = {"Strong": 0, "Viable": 1, "Depends on employer": 2, "Stretch": 3, "Needs evidence": 4, "Long shot": 5, "Not preferred": 6, "Not available": 7}
     pr_lo, pr_hi = pr_window
-    return {"id": sid, "name": name, "route": [r for r in route if r and r not in {"unknown", "other"}], "summary": summary, "level": level, "rank": rank.get(level, 9),
+    track = "family" if sid.startswith("partner") else "sponsored" if sid.split("-")[0] in {"482", "186", "494"} else "independent"
+    return {"id": sid, "track": track, "name": name, "route": [r for r in route if r and r not in {"unknown", "other"}], "summary": summary, "level": level, "rank": rank.get(level, 9),
             "reasons": reasons, "prWindow": {"from": iso(pr_lo), "to": iso(pr_hi), "label": f"{label(pr_lo)} to {label(pr_hi)}" if pr_lo else "Not estimable yet"},
             "monthsToPr": round(months_between(b.ctx.today, pr_lo)) if pr_lo else None,
             "costs": {"items": b.costs, "government": gov, "otherLow": round(other_lo), "otherHigh": round(other_hi)},
@@ -988,8 +997,7 @@ def decision_tree(ctx: Ctx, pts_now, strategies):
         return {"type": "question", "id": qid, "label": lbl, "answer": answer, "why": why, "branches": [{"value": "yes", "label": "Yes", "child": yes}, {"value": "no", "label": "No", "child": no}]}
     yn = lambda v: None if v is None else ("yes" if v else "no")
     partner = None if not ctx.partner else ctx.partner == "partner_citizen_pr"
-    exceptional = bool(ctx.c.get("exceptionalTalent")) if "exceptionalTalent" in ctx.c else None
-    employer = None if not ctx.employer else ctx.employer in {"offer", "sponsoring", "interested"}
+    employer = None if not ctx.employer else ctx.employer == "yes"
     exp3 = (ctx.au_exp + ctx.os_exp) >= 3
     competitive = None if target is None else pts_now >= target
     regional = None if ctx.regional in {"", "maybe"} else ctx.regional == "yes"
@@ -1009,8 +1017,6 @@ def decision_tree(ctx: Ctx, pts_now, strategies):
                      out(f"190-{state}", f"190 {state} nomination"), out("482-186", "Look for a sponsor (482 to 186)")))),
                why="Employer routes are not points tested."),
              why="Partner visas do not depend on occupation or points.")
-    if exceptional:
-        tree = q("talent", "Do you have an internationally recognised record of exceptional achievement?", "yes", out("858", "National Innovation 858"), tree)
     return tree
 
 
@@ -1065,7 +1071,7 @@ def missing_inputs(ctx: Ctx):
     if not ctx.assessment: need("skillsAssessment", "Skills assessment status", "Needed for 189, 190, 491, 494 and 186 Direct Entry.", 2)
     if not ctx.partner: need("partner", "Relationship status", "Up to 10 points, and unlocks the partner route.", 2)
     if not ctx.regional: need("regional", "Regional willingness", "Decides whether 491 and 494 routes fit.", 1)
-    if not ctx.employer: need("employer", "Employer sponsorship", "Decides the 482 to 186 and 494 routes.", 1)
+    if not ctx.employer: need("employer", "Employer sponsorship", "Decides whether sponsored routes are shown.", 1)
     if not (ctx.c.get("employedInOccupation")): need("employedInOccupation", "Working in your occupation now?", "Experience points and state work requirements grow from your start date.", 1)
     return sorted(rows, key=lambda r: -r["weight"])
 
@@ -1078,7 +1084,8 @@ def build_plan(profile: dict, circumstances: dict, live: dict | None = None, tod
                          "sources": [{"label": l, "url": u} for l, u in R.SECONDARY.values()] + [{"label": "Points table", "url": R.POINTS_TABLE_URL}, {"label": "Global processing times", "url": R.PROCESSING_URL}, {"label": "Visa pricing estimator", "url": R.PRICING_URL}, {"label": "Planning levels", "url": R.PLANNING_URL}]},
             "today": iso(ctx.today), "context": {"visa": ctx.visa, "visaText": ctx.visa_text, "visaExpiry": iso(ctx.visa_expiry), "daysOnVisa": (ctx.visa_expiry - ctx.today).days if ctx.visa_expiry else None,
                                                 "age": ctx.age(), "occupation": ctx.occupation, "anzsco": ctx.anzsco, "family": ctx.family, "assessor": {"name": ctx.assessor["name"], "url": ctx.assessor["url"], "options": [{"label": o[0], "fee": o[1], "note": o[2]} for o in ctx.assessor["options"]]},
-                                                "states": ctx.states, "completion": iso(ctx.completion), "workStart": iso(ctx.work_start), "qualification": ctx.qualification, "settled": ctx.visa in SETTLED},
+                                                "states": ctx.states, "completion": iso(ctx.completion), "workStart": iso(ctx.work_start), "qualification": ctx.qualification, "settled": ctx.visa in SETTLED, "employer": ctx.employer, "pyEligible": bool(ctx.assessor.get("professionalYear")),
+                                                "field": ctx.field, "fields": [{"value": v, "label": l, "assessor": R.ASSESSORS[k]["name"]} for v, l, k in R.FIELDS_OF_STUDY]},
             "points": pts, "pointsOptions": points_options(ctx), "pointsTimeline": points_timeline(ctx), "assumptions": ctx.assumptions, "missing": missing_inputs(ctx)}
     if ctx.visa in SETTLED:
         base.update(strategies=[], tree={"type": "outcome", "label": "You already hold permanent residence or citizenship", "level": "Strong"}, visas=[], deadlines=deadlines(ctx, []),
@@ -1091,15 +1098,21 @@ def build_plan(profile: dict, circumstances: dict, live: dict | None = None, tod
     for st in ctx.states[:2]:
         strategies.append(strat_190(ctx, pts["total"], st))
     strategies.append(strat_491(ctx, pts["total"], ctx.states[0]))
-    strategies.append(strat_482(ctx, pts["total"]))
-    if ctx.visa != "482":
-        strategies.append(strat_186de(ctx, pts["total"]))
-        strategies.append(strat_494(ctx, pts["total"]))
-    if ctx.c.get("exceptionalTalent"):
-        strategies.append(strat_858(ctx, pts["total"]))
+    ruled_out = []
+    if ctx.employer == "no":
+        ruled_out.append({"id": "sponsored", "name": "Employer sponsored routes (482 to 186, 494 to 191, 186 Direct Entry)", "track": "sponsored",
+                          "reason": "Hidden because you answered No to employer sponsorship. Change that answer to compare them."})
+    else:
+        strategies.append(strat_482(ctx, pts["total"]))
+        if ctx.visa != "482":
+            strategies.append(strat_186de(ctx, pts["total"]))
+            strategies.append(strat_494(ctx, pts["total"]))
+    for s_ in [x for x in strategies if x["level"] in {"Not available", "Not preferred"}]:
+        ruled_out.append({"id": s_["id"], "name": s_["name"], "track": s_["track"], "route": s_["route"], "reason": " ".join(s_["reasons"][:1])})
+    strategies = [x for x in strategies if x["level"] not in {"Not available", "Not preferred"}]
     strategies.sort(key=lambda s: (s["rank"], s["monthsToPr"] if s["monthsToPr"] is not None else 999))
     codes = ["485"] if ctx.visa in {"500", "485"} else []
-    codes += ["189", "190", "491", "482", "186", "494", "191"] + (["820"] if ctx.partner == "partner_citizen_pr" else []) + (["858"] if ctx.c.get("exceptionalTalent") else [])
+    codes += ["189", "190", "491", "482", "186", "494", "191"] + (["820"] if ctx.partner == "partner_citizen_pr" else []) 
     visas = []
     for code in codes:
         v = R.VISAS[code]
@@ -1110,7 +1123,12 @@ def build_plan(profile: dict, circumstances: dict, live: dict | None = None, tod
                       "processing": v["processing"], "stay": v["stay"], "rights": v["rights"], "keyConditions": v["keyConditions"], "notes": v["notes"], "url": R.VISA_URL.get(code),
                       "checks": checks, "counts": counts, "status": "blocked" if counts["unmet"] and any(c["id"] in {"age", "previous", "record", "sponsor"} and c["state"] == "unmet" for c in checks) else "ready" if not counts["unmet"] and not counts["unknown"] and not counts["later"] else "work" if counts["unmet"] or counts["later"] else "check"})
     best = strategies[0] if strategies else None
-    base.update(strategies=strategies, visas=visas, tree=decision_tree(ctx, pts["total"], strategies), deadlines=deadlines(ctx, strategies),
+    tracks = {}
+    for t in ("independent", "sponsored", "family"):
+        best_t = next((x for x in strategies if x["track"] == t), None)
+        if best_t:
+            tracks[t] = best_t["id"]
+    base.update(strategies=strategies, ruledOut=ruled_out, tracks=tracks, visas=visas, tree=decision_tree(ctx, pts["total"], strategies), deadlines=deadlines(ctx, strategies),
                 headline={"title": best["name"] if best else "No route estimated", "detail": "; ".join(best["reasons"][:2]) if best else "", "prWindow": best["prWindow"] if best else None},
                 states=[{"code": code, "name": info["name"], "status": ((live or {}).get("states") or {}).get(code, {}).get("excerpt") or info["status"],
                          "statusCheckedAt": ((live or {}).get("states") or {}).get(code, {}).get("checkedAt"), "statusBasis": "live" if ((live or {}).get("states") or {}).get(code) else "rulebook",

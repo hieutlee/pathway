@@ -21,12 +21,12 @@ const emptyCircumstances = {
   dob:'', passport:'', qualification:'', auQualification:null, institution:'', studyState:'', studyRegional:'no', courseCompletion:'', australianStudy:null, specialistEducation:false,
   englishLevel:'', englishTestDate:'', skillsAssessment:'', skillsAssessmentDate:'', auExperienceYears:0, overseasExperienceYears:0, employedInOccupation:'',
   stateEmploymentMonths:0, regionalEmploymentMonths:0, professionalYear:false, naati:false, partner:'', partnerRelationship:'', relationshipMonths:0,
-  regional:'', preferredStates:[], employer:'', salary:null, sponsorMonths:0, currentVisaGrantDate:'', previous485:false, exceptionalTalent:false, targetPoints:null
+  regional:'', preferredStates:[], employer:'', salary:null, sponsorMonths:0, currentVisaGrantDate:'', targetPoints:null, fieldOfStudy:''
 }
-const sampleCircumstances = {...emptyCircumstances, dob:'2001-05-14', passport:'Vietnam', qualification:'bachelor', auQualification:true, institution:'QUT', studyState:'QLD',
-  courseCompletion:'2026-11-20', englishLevel:'proficient', skillsAssessment:'none', partner:'single', regional:'maybe', employer:'none', employedInOccupation:'no', preferredStates:['QLD']}
+const sampleCircumstances = {...emptyCircumstances, dob:'2001-05-14', passport:'Vietnam', fieldOfStudy:'engineering', qualification:'bachelor', auQualification:true, institution:'QUT', studyState:'QLD',
+  courseCompletion:'2026-11-20', englishLevel:'proficient', skillsAssessment:'none', partner:'single', regional:'maybe', employer:'', employedInOccupation:'no', preferredStates:['QLD']}
 
-const STORE_KEY='pathway.state.v2'
+const STORE_KEY='pathway.state.v3'
 function loadSaved(){try{const raw=localStorage.getItem(STORE_KEY);return raw?JSON.parse(raw):null}catch(e){return null}}
 function save(state){try{localStorage.setItem(STORE_KEY,JSON.stringify(state))}catch(e){}}
 
