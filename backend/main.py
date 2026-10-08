@@ -1,20 +1,29 @@
 from __future__ import annotations
 import io, os, re, time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 import httpx
-from urllib.parse import urljoin
-from openpyxl import load_workbook
 from bs4 import BeautifulSoup
 from cachetools import TTLCache
 from fastapi import FastAPI, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from pathlib import Path
+from dotenv import load_dotenv
+from intelligence import migration_intelligence, shortage_intelligence, profile_checklist
+from job_provider import apify_jobs, adzuna_jobs, configuration
+from job_search import search_jobs
+import asyncio
+import migration_rules
+from migration_engine import build_plan
+from migration_live import gather_live
 from pypdf import PdfReader
 from docx import Document
 
+load_dotenv(Path(__file__).with_name(".env"))
+
 app = FastAPI(title="Pathway Live Intelligence API", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"] , allow_methods=["*"] , allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(","), allow_methods=["GET","POST"], allow_headers=["Content-Type"])
 
 CACHE = {
     "migration": TTLCache(maxsize=64, ttl=60*60),
@@ -57,12 +66,13 @@ def cache_get(bucket: str, key: str):
     item=CACHE[bucket].get(key)
     if not item: return None
     payload=dict(item["payload"])
-    payload["status"]="cached"
+    payload["cached"]=True
     payload["freshness"]=age_label(item["ts"])
     return payload
 
 def cache_put(bucket: str, key: str, payload: dict):
-    CACHE[bucket][key]={"payload":payload,"ts":time.time()}
+    if payload.get("status") in {"fresh", "partial", "stale"}:
+        CACHE[bucket][key]={"payload":payload,"ts":time.time()}
     return payload
 
 async def fetch_html(url: str, timeout=10):
@@ -70,55 +80,6 @@ async def fetch_html(url: str, timeout=10):
         r=await client.get(url)
         r.raise_for_status()
         return r.text
-
-async def fetch_bytes(url: str, timeout=15):
-    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=timeout) as client:
-        r=await client.get(url)
-        r.raise_for_status()
-        return r.content
-
-def norm_occ(value: str):
-    return re.sub(r'[^a-z0-9]+',' ',str(value or '').lower()).strip()
-
-def parse_osl_workbook(raw: bytes, occupation: str, state: str):
-    target=norm_occ(occupation)
-    if not target: return None
-    wb=load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-    aliases={"QLD":["qld","queensland"],"NSW":["nsw","new south wales"],"VIC":["vic","victoria"],"WA":["wa","western australia"],"SA":["sa","south australia"],"TAS":["tas","tasmania"],"ACT":["act","australian capital territory"],"NT":["nt","northern territory"]}
-    best=None
-    for ws in wb.worksheets:
-        rows=ws.iter_rows(values_only=True)
-        buffered=[]
-        header=None
-        for _ in range(30):
-            try: row=next(rows)
-            except StopIteration: break
-            buffered.append(row)
-            vals=[norm_occ(v) for v in row]
-            if any(v in {"occupation","occupation title","anzsco occupation","osca occupation"} or "occupation title" in v for v in vals) and any("national" in v for v in vals):
-                header=[str(v or '').strip() for v in row]; break
-        if not header: continue
-        lower=[norm_occ(x) for x in header]
-        occ_cols=[i for i,h in enumerate(lower) if "occupation" in h and "code" not in h]
-        nat_cols=[i for i,h in enumerate(lower) if h in {"national","australia","national rating","national shortage rating"} or ("national" in h and "rating" in h)]
-        state_cols=[i for i,h in enumerate(lower) if any(a==h or a in h for a in aliases.get(state.upper(),[]))]
-        code_cols=[i for i,h in enumerate(lower) if "code" in h and ("anzsco" in h or "osca" in h or h=="code")]
-        if not occ_cols: continue
-        for row in rows:
-            names=[str(row[i] or '').strip() for i in occ_cols if i < len(row)]
-            for name in names:
-                n=norm_occ(name)
-                if not n: continue
-                exact=n==target
-                contains=target in n or n in target
-                if not (exact or contains): continue
-                rec={"occupation":name,"code":next((str(row[i]).strip() for i in code_cols if i<len(row) and row[i] is not None),None),
-                     "nationalRating":next((str(row[i]).strip() for i in nat_cols if i<len(row) and row[i] is not None),None),
-                     "stateRating":next((str(row[i]).strip() for i in state_cols if i<len(row) and row[i] is not None),None),
-                     "state":state.upper(),"matchType":"exact" if exact else "close"}
-                if exact: return rec
-                best=best or rec
-    return best
 
 @app.get("/api/health")
 def health(): return {"ok":True,"time":now_iso()}
@@ -187,6 +148,7 @@ async def parse_resume(file: UploadFile = File(...)):
         career_family="General professional"
         role_candidates=[{"title":"Graduate Program","confidence":55,"family":"General"},{"title":"Entry Level Professional","confidence":50,"family":"General"}]
 
+    hints=migration_hints(text)
     years=[int(m.group(1)) for m in re.finditer(r'\b(20\d{2})\b',text)]
     exp=max(0,min(15,(max(years)-min(years)) if len(years)>1 else 0))
     return {
@@ -197,45 +159,57 @@ async def parse_resume(file: UploadFile = File(...)):
         "education":degree_match.group(1).strip() if degree_match else "Qualification detected from resume",
         "experienceYears":exp,
         "skills":skills[:16] or ["Add skills from resume"],
-        "goal":f"Build a meaningful Australian career in {career_family.lower()} and understand realistic migration options"
+        "goal":f"Build a meaningful Australian career in {career_family.lower()} and understand realistic migration options",
+        "visa":hints.pop("visa",""),
+        "migrationHints":hints
     }
+
+
+MONTHS={m:i for i,m in enumerate(["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"],1)}
+
+def migration_hints(text:str)->dict:
+    """Facts a resume can reveal for migration planning. Every hint is shown for review, never assumed final."""
+    lower=text.lower(); hints:dict[str,Any]={}; found=[]
+    for name,(state,regional) in sorted(migration_rules.INSTITUTIONS.items(), key=lambda x:-len(x[0])):
+        if re.search(rf'(?<![a-z]){re.escape(name)}(?![a-z])',lower):
+            hints.update(institution=(name.title().replace(" Of "," of ").replace(" The "," the ") if len(name)>4 else name.upper()), studyState=state, studyRegional="no" if regional=="check" else regional, auQualification=True)
+            if regional=="check": hints["studyRegionalNote"]="This institution has metropolitan and regional campuses. Confirm your campus."
+            found.append("Australian institution")
+            break
+    if re.search(r'ph\.?d|doctor of philosophy',lower): hints["qualification"]="doctorate"
+    elif re.search(r'master of (?:philosophy|research)|mphil|masters? by research',lower): hints["qualification"]="masters_research"
+    elif re.search(r'master of|masters? degree|\bmsc\b|\bmba\b|\bmeng\b',lower): hints["qualification"]="masters_coursework"
+    elif re.search(r'bachelor|b\.?eng|honours',lower): hints["qualification"]="bachelor"
+    elif 'diploma' in lower: hints["qualification"]="diploma"
+    comp=re.search(r'(?:expected|anticipated|completion|graduat\w*|grad\.?)\s*(?:date)?\s*:?\s*(?:in\s*)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(20\d{2})',lower) or re.search(r'(?:20\d{2})\s*[-–]\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(20\d{2})',lower)
+    if comp and hints.get("auQualification"):
+        hints["courseCompletion"]=f"{comp.group(2)}-{MONTHS[comp.group(1)]:02d}-15"; found.append("completion month")
+    ielts=re.search(r'ielts[^0-9\n]{0,30}(\d(?:\.5)?)',lower); pte=re.search(r'pte(?: academic)?[^0-9\n]{0,30}(\d{2})',lower)
+    if ielts:
+        score=float(ielts.group(1)); hints["englishLevel"]="superior" if score>=8 else "proficient" if score>=7 else "competent" if score>=6 else ""
+        hints["englishNote"]=f"IELTS {score:g} found. Points depend on every band, so confirm each score."
+    elif pte:
+        score=int(pte.group(1)); hints["englishLevel"]="superior" if score>=79 else "proficient" if score>=65 else "competent" if score>=50 else ""
+        hints["englishNote"]=f"PTE {score} found. Points depend on each communicative skill, so confirm each score."
+    if re.search(r'naati|credentialed community language|\bccl\b',lower): hints["naati"]=True
+    if re.search(r'professional year',lower): hints["professionalYear"]=True
+    if re.search(r'(?:subclass|visa)\s*485|temporary graduate',lower): hints["visa"]="Temporary Graduate visa (subclass 485)"
+    elif re.search(r'(?:subclass|visa)\s*500|student visa',lower): hints["visa"]="Student visa (subclass 500)"
+    elif re.search(r'permanent resident',lower): hints["visa"]="Australian permanent resident"
+    elif re.search(r'australian citizen',lower) and not re.search(r'must be an australian citizen',lower): hints["visa"]="Australian citizen"
+    hints["found"]=found
+    return hints
 
 @app.get("/api/intelligence/migration")
 async def migration(occupation: str=Query(""), state: str=Query("QLD"), anzsco: str=Query(""), visa: str=Query(""), experienceYears: float=Query(0), education: str=Query("")):
-    key="rounds"
-    if cached:=cache_get("migration",key): return enrich_migration(cached,occupation,visa,experienceYears,education,state)
-    try:
-        html=await fetch_html(HOME_AFFAIRS)
-        text=BeautifulSoup(html,"html.parser").get_text(" ",strip=True)
-        date_match=re.search(r'Invitations issued on\s+([0-9]{1,2}\s+[A-Za-z]+\s+20\d{2})',text,re.I)
-        inv_match=re.search(r'Skilled Independent visa\s*\(subclass 189\)\s*([0-9,]{3,})',text,re.I)
-        next_match=re.search(r'next invitation round[^.]{0,180}?(?:by\s+)?([0-9]{1,2}\s+[A-Za-z]+\s+20\d{2})',text,re.I)
-        tie_match=re.search(r'Skilled Independent visa\s*\(subclass 189\)\s*([0-9,]{3,})\s*([0-9]{1,2}/[0-9]{1,2}/20\d{2})',text,re.I)
-        program_total=None
-        # Current-round pages often expose monthly program-year totals. Sum only the 189 row when it is parseable.
-        year_row=re.search(r'Skilled Independent visa\s*\(subclass 189\)\s*((?:[0-9,]+\s+){11}[0-9,]+)',text,re.I)
-        if year_row:
-            try: program_total=f"{sum(int(x.replace(',', '')) for x in year_row.group(1).split()):,}"
-            except Exception: program_total=None
-        payload={"status":"fresh","freshness":"Checked just now","updated":"just now","checkedAt":now_iso(),"source":"Department of Home Affairs","sourceUrl":HOME_AFFAIRS,
-                 "latestRound":{"date":date_match.group(1) if date_match else "Current round published","invitations":inv_match.group(1) if inv_match else "See official round","tieBreak":tie_match.group(2) if tie_match else None,"headline":"Latest official SkillSelect invitation outcomes checked live."},
-                 "nextRound":next_match.group(1) if next_match else None,"programYear189Invitations":program_total,"rawText":text[:30000]}
-        cache_put("migration",key,payload)
-        return enrich_migration(payload,occupation,visa,experienceYears,education,state)
-    except Exception as e:
-        fallback={"status":"unavailable","freshness":"Live check failed","updated":"not updated","source":"Department of Home Affairs","sourceUrl":HOME_AFFAIRS,"latestRound":{"headline":"Home Affairs could not be reached during this request."},"error":type(e).__name__}
-        return enrich_migration(fallback,occupation,visa,experienceYears,education,state)
+    key=(occupation, state, anzsco)
+    payload=cache_get("migration",key)
+    if payload is None:
+        payload=cache_put("migration",key,await migration_intelligence(occupation,state,anzsco))
+    return enrich_migration(payload,occupation,visa,experienceYears,education,state)
 
 def enrich_migration(payload:dict, occupation:str, visa:str="", experience_years:float=0, education:str="", state:str="QLD"):
     p=dict(payload); p["latestRound"]=dict(payload.get("latestRound",{}))
-    raw=payload.get("rawText","")
-    score=None
-    if occupation and raw:
-        pattern=rf'{re.escape(occupation)}\s+([0-9]{{2,3}})\b'
-        m=re.search(pattern,raw,re.I)
-        if m: score=m.group(1)+" points"
-    p["latestRound"]["scoreForOccupation"]=score
-
     v=(visa or "").lower()
     exp=float(experience_years or 0)
     is_student="student visa" in v or "500" in v
@@ -276,51 +250,10 @@ def enrich_migration(payload:dict, occupation:str, visa:str="", experience_years
     return p
 
 @app.get("/api/intelligence/occupation")
-async def occupation(occupation: str=Query(""), state: str=Query("QLD"), anzsco: str=Query("")):
-    key=(occupation or anzsco or "general").lower()
+async def occupation(occupation: str=Query(""), state: str=Query("QLD"), anzsco: str=Query(""), osca: str=Query("")):
+    key=(occupation,state,anzsco,osca)
     if cached:=cache_get("occupation",key): return cached
-    try:
-        html=await fetch_html(JSA_OCCUPATIONS)
-        text=BeautifulSoup(html,"html.parser").get_text(" ",strip=True)
-        shortage_html=await fetch_html(JSA_SHORTAGE)
-        shortage_text=BeautifulSoup(shortage_html,"html.parser").get_text(" ",strip=True)
-        shortage_home_html=await fetch_html(JSA_SHORTAGE_HOME)
-        shortage_home_text=BeautifulSoup(shortage_home_html,"html.parser").get_text(" ",strip=True)
-        shortage_report_html=await fetch_html(JSA_SHORTAGE_REPORT)
-        shortage_report_text=BeautifulSoup(shortage_report_html,"html.parser").get_text(" ",strip=True)
-        shortage="Current OSL checked"
-        occupation_match=False
-        osl_match=None
-        try:
-            soup=BeautifulSoup(shortage_home_html,"html.parser")
-            xlsx_link=next((urljoin(JSA_SHORTAGE_HOME,a.get("href")) for a in soup.find_all("a",href=True) if "occupation shortage list" in (a.get_text(" ",strip=True)+" "+a.get("href","" )).lower() and a.get("href","").lower().endswith(".xlsx")),None)
-            if xlsx_link:
-                osl_match=parse_osl_workbook(await fetch_bytes(xlsx_link),occupation,state)
-        except Exception:
-            osl_match=None
-        if osl_match:
-            rating=(osl_match.get("nationalRating") or "").lower()
-            occupation_match="shortage" in rating and "no shortage" not in rating
-            shortage=osl_match.get("nationalRating") or "Occupation matched"
-        elif occupation and occupation.lower() in shortage_text.lower():
-            shortage="Shortage list match"; occupation_match=True
-        list_year=(re.search(r'(20\d{2})\s+Occupation Shortage List',shortage_home_text,re.I) or re.search(r'(20\d{2})\s+OSL',shortage_home_text,re.I))
-        national=re.search(r'(\d{1,2})%\s+of occupations[^.]{0,80}?shortage',shortage_home_text,re.I)
-        counts=re.search(r'(\d{2,4})\s+(?:out of|of)\s+(\d{3,4})[^.]{0,80}?shortage',shortage_home_text,re.I)
-        fill=re.search(r'(?:National vacancy fill rates? (?:fell|rose|reached|dipped)[^0-9]{0,20})(\d{2}\.\d)%',shortage_report_text,re.I)
-        report_date=re.search(r'Occupation Shortage Report\s*[-–]\s*([A-Za-z]+\s+20\d{2})',shortage_report_text,re.I)
-        payload={"status":"fresh","freshness":"Checked just now","updated":"just now","checkedAt":now_iso(),"source":"Jobs and Skills Australia","sourceUrl":JSA_SHORTAGE_HOME,
-                 "shortage":shortage,"occupationMatch":occupation_match,"occupationChecked":occupation or "Target occupation",
-                 "occupationResult":osl_match,
-                 "shortageNote":"Current JSA shortage sources checked for your mapped occupation.",
-                 "oslYear":list_year.group(1) if list_year else None,
-                 "nationalShortagePct":(national.group(1)+"%") if national else None,
-                 "nationalShortageCount":counts.group(1) if counts else None,"occupationsAssessed":counts.group(2) if counts else None,
-                 "vacancyFillRate":(fill.group(1)+"%") if fill else None,"shortageReportPeriod":report_date.group(1) if report_date else None,
-                 "employment":"Occupation profiles available from JSA","earnings":"Occupation profile releases are transitioning from ANZSCO to OSCA."}
-        return cache_put("occupation",key,payload)
-    except Exception as e:
-        return {"status":"unavailable","freshness":"Live check failed","updated":"not updated","source":"Jobs and Skills Australia","sourceUrl":JSA_OCCUPATIONS,"shortage":"Unavailable","shortageNote":"The live JSA occupation source did not respond.","error":type(e).__name__}
+    return cache_put("occupation",key,await shortage_intelligence(occupation,state,anzsco,osca))
 
 @app.get("/api/intelligence/vacancies")
 async def vacancies(occupation: str=Query(""), state: str=Query("QLD"), anzsco: str=Query("")):
@@ -336,81 +269,88 @@ async def vacancies(occupation: str=Query(""), state: str=Query("QLD"), anzsco: 
             latest_month=(released.group(1) if released else '').lower()
             next_release=next(((m,d) for m,d in future if m.lower()!=latest_month),None)
         download_count=len(re.findall(r'Internet Vacancies,',text,re.I))
-        # Trend remains explicitly preview-only until the structured XLSX time-series pipeline is connected.
-        trend=[{"month":"Feb","value":74},{"month":"Mar","value":79},{"month":"Apr","value":77},{"month":"May","value":82},{"month":"Jun","value":84},{"month":"Jul","value":81}]
+        trend=[]
         payload={"status":"fresh","freshness":"Source checked just now","updated":"just now","checkedAt":now_iso(),"source":"Jobs and Skills Australia Internet Vacancy Index","sourceUrl":JSA_IVI,
-                 "headline":released.group(1) if released else "Latest IVI release checked",
+                 "headline":released.group(1) if released else "Release not extracted",
                  "subheadline":f"Released {released.group(2)}" if released else "Monthly online vacancy intelligence",
                  "releasePeriod":released.group(1) if released else None,"releaseDate":released.group(2) if released else None,
                  "nextReleasePeriod":next_release[0] if next_release else None,"nextReleaseDate":next_release[1] if next_release else None,
                  "downloadSeries":download_count or None,"coverage":"Online job advertisements across occupations, states and regions",
-                 "trend":trend,"trendMode":"interface_preview"}
+                 "trend":trend,"trendMode":"unavailable","note":"Occupation vacancy time series is not connected. No illustrative values are shown."}
+        if not released:
+            payload.update(status="partial", freshness="Release metadata unavailable")
         return cache_put("vacancies",key,payload)
     except Exception as e:
         return {"status":"unavailable","freshness":"Live check failed","updated":"not updated","source":"JSA Internet Vacancy Index","sourceUrl":JSA_IVI,"headline":"Unavailable","subheadline":"Live vacancy source could not be reached","trend":[],"error":type(e).__name__}
 
 @app.get("/api/intelligence/jobs")
-async def jobs(
-    occupation: str=Query(""),
-    state: str=Query("QLD"),
-    anzsco: str=Query(""),
-    skills: str=Query(""),
-    education: str=Query(""),
-    goal: str=Query(""),
-    candidates: str=Query("")
-):
-    skill_list=[x.strip() for x in skills.split(",") if x.strip()]
-    candidate_roles=[x.strip() for x in candidates.split("|") if x.strip()]
-    key=(occupation+state+skills+education+goal+candidates).lower()
+async def jobs(occupation: str=Query(""), state: str=Query("QLD"), anzsco: str=Query(""), skills: str=Query(""), education: str=Query(""), goal: str=Query(""), candidates: str=Query("")):
+    search_roles=list(dict.fromkeys(([occupation] if occupation else [])+[role.strip() for role in candidates.split("|") if role.strip()]))[:8]
+    skill_list=[skill.strip() for skill in skills.split(",") if skill.strip()]
+    config=configuration()
+    provider="apify" if any(config.values()) or not (os.getenv("ADZUNA_APP_ID") and os.getenv("ADZUNA_APP_KEY")) else "adzuna"
+    key=(occupation,state,skills,candidates,provider,config["task"],config["dataset"],bool(config["token"]))
     if cached:=cache_get("jobs",key): return cached
-
-    search_roles=candidate_roles[:5] or ([occupation] if occupation and occupation not in {"General professional","Skilled professional"} else [])
-    if not search_roles:
-        search_roles=["Graduate Program","Entry Level Professional"]
-
-    app_id=os.getenv("ADZUNA_APP_ID")
-    app_key=os.getenv("ADZUNA_APP_KEY")
-    if app_id and app_key:
-        try:
-            gathered=[]
-            async with httpx.AsyncClient(timeout=10) as client:
-                for search_role in search_roles[:3]:
-                    url="https://api.adzuna.com/v1/api/jobs/au/search/1"
-                    r=await client.get(url,params={"app_id":app_id,"app_key":app_key,"what":search_role,"where":state,"results_per_page":6,"content-type":"application/json"})
-                    r.raise_for_status(); js=r.json()
-                    for j in js.get("results",[]):
-                        title=j.get("title","Role")
-                        hay=(title+" "+(j.get("description") or "")).lower()
-                        matched=[s for s in skill_list if s.lower() in hay]
-                        candidate_bonus=10 if any(r.lower() in title.lower() or title.lower() in r.lower() for r in search_roles) else 0
-                        score=min(97,68+candidate_bonus+min(18,len(matched)*4))
-                        gathered.append({"title":title,"company":(j.get("company") or {}).get("display_name","Employer"),"location":(j.get("location") or {}).get("display_name",state),"match":score,"reason":f"Current vacancy matched against your inferred role family"+(f" and skills: {', '.join(matched[:4])}." if matched else "."),"url":j.get("redirect_url")})
-            unique=[]; seen=set()
-            for j in sorted(gathered,key=lambda x:x["match"],reverse=True):
-                k=(j["title"].lower(),j["company"].lower())
-                if k not in seen:
-                    seen.add(k); unique.append(j)
-            payload={"status":"fresh","freshness":"Checked just now","updated":"just now","checkedAt":now_iso(),"source":"Adzuna Australia API","roles":unique[:10],"searchRoles":search_roles}
-            return cache_put("jobs",key,payload)
-        except Exception:
-            pass
-
-    # Personalised preview when no authorised live job provider is configured.
-    # Titles are selected from the resume inferred candidate roles, never from a universal engineering fallback.
-    roles=[]
-    base=93
-    for idx,title in enumerate(search_roles[:8]):
-        matched=skill_list[idx % len(skill_list)] if skill_list else None
-        reason=f"Personalised preview derived from your resume profile and inferred occupation family"
-        if matched: reason+=f". Your {matched} experience is one signal supporting this recommendation"
-        reason+=". Configure a licensed job feed to replace this with current advertised vacancies."
-        roles.append({"title":title,"company":"Live provider required","location":state if state else "Australia","match":max(68,base-idx*4),"reason":reason})
-    payload={"status":"cached","freshness":"Personalised preview, live provider not configured","updated":"provider required","source":"Pathway recommendation engine","roles":roles,"count":None,"searchRoles":search_roles,"requiresConfiguration":["ADZUNA_APP_ID","ADZUNA_APP_KEY"],"note":"Recommendations are personalised from the uploaded profile. Current vacancy results require an authorised job provider."}
+    payload=await (apify_jobs(search_roles,state,skill_list) if provider=="apify" else adzuna_jobs(search_roles,state,skill_list))
     return cache_put("jobs",key,payload)
 
 class RecommendationRequest(BaseModel):
     profile: dict[str,Any]
     intelligence: dict[str,Any]
+
+class JobProfile(BaseModel):
+    occupation: str = Field(default="", max_length=160)
+    skills: list[str] = Field(default_factory=list, max_length=100)
+    experienceYears: float | None = Field(default=None, ge=0, le=80)
+
+class JobSearchRequest(BaseModel):
+    role: str = Field(min_length=2, max_length=160)
+    location: str = Field(min_length=2, max_length=160)
+    dateWindow: Literal["anyTime", "past24Hours", "pastWeek", "pastMonth"] = "anyTime"
+    profile: JobProfile = Field(default_factory=JobProfile)
+    startIfMissing: bool = True
+
+@app.post("/api/jobs/search")
+async def job_search(req: JobSearchRequest):
+    return await search_jobs(req.role, req.location, req.profile.model_dump(), req.dateWindow, req.startIfMissing)
+
+class MigrationPlanRequest(BaseModel):
+    profile: dict[str,Any]
+    circumstances: dict[str,Any] = Field(default_factory=dict)
+    jobs: dict[str,Any] | None = None
+
+async def _cached_source(bucket, key, factory, timeout):
+    if cached:=cache_get(bucket,key): return cached
+    try:
+        return cache_put(bucket,key,await asyncio.wait_for(factory(),timeout))
+    except Exception as exc:
+        return {"status":"unavailable","error":type(exc).__name__}
+
+@app.post("/api/migration/plan")
+async def migration_plan(req: MigrationPlanRequest):
+    p=req.profile or {}
+    occupation=p.get("occupation") or ""; anzsco=p.get("anzsco") or ""; state=(p.get("location") or "QLD").split(",")[-1].strip() or "QLD"
+    round_payload, shortage_payload, extra = await asyncio.gather(
+        _cached_source("migration",(occupation,state,anzsco),lambda: migration_intelligence(occupation,state,anzsco),25),
+        _cached_source("occupation",(occupation,state,anzsco,p.get("osca") or ""),lambda: shortage_intelligence(occupation,state,anzsco,p.get("osca") or ""),25),
+        asyncio.wait_for(gather_live(),15))
+    live={"round":(round_payload.get("latestRound") or {}) if round_payload.get("status") in {"fresh","partial","stale"} else {},
+          "shortage":shortage_payload.get("occupationResult") or {},
+          "fees":extra["fees"],"states":extra["states"],"jobs":req.jobs}
+    plan=build_plan(p,req.circumstances,live)
+    plan["liveSources"]=[
+        {"id":"round","label":"SkillSelect invitation round","status":round_payload.get("status","unavailable"),"checkedAt":round_payload.get("checkedAt"),"sourceUrl":round_payload.get("sourceUrl") or HOME_AFFAIRS,
+         "detail":(f"{live['round'].get('date')} · {live['round'].get('invitations'):,} invitations" if live['round'].get('date') and live['round'].get('invitations') is not None else round_payload.get("note") or "Unavailable")},
+        {"id":"shortage","label":"JSA shortage ratings by state","status":shortage_payload.get("status","unavailable"),"checkedAt":shortage_payload.get("checkedAt"),"sourceUrl":shortage_payload.get("downloadUrl") or shortage_payload.get("sourceUrl"),
+         "detail":(f"{live['shortage'].get('occupation')} · {shortage_payload.get('oslYear')} list" if live['shortage'] else shortage_payload.get("shortageNote") or "Unavailable")},
+        {"id":"fees","label":"Visa charges on Home Affairs pages","status":"fresh" if extra["fees"] else "fallback","checkedAt":extra["report"]["checkedAt"],"sourceUrl":migration_rules.PRICING_URL,
+         "detail":(f"Live for {', '.join(extra['report']['feesLive'])}" if extra["fees"] else f"Rulebook values from 1 July 2026, verified {migration_rules.RULEBOOK_VERIFIED}")},
+        {"id":"states","label":"State program notices","status":"fresh" if extra["states"] else "fallback","checkedAt":extra["report"]["checkedAt"],"sourceUrl":migration_rules.STATES["QLD"]["url"],
+         "detail":(f"Live excerpts for {', '.join(extra['report']['statesLive'])}" if extra["states"] else f"Rulebook status, verified {migration_rules.STATE_STATUS_VERIFIED}")},
+        {"id":"jobs","label":"Work rights in collected adverts","status":"fresh" if (req.jobs or {}).get("count") else "unavailable","checkedAt":(req.jobs or {}).get("collectedAt"),"sourceUrl":None,
+         "detail":(f"{req.jobs.get('count')} adverts for {req.jobs.get('role')}" if (req.jobs or {}).get("count") else "Run a Jobs search to add employer evidence")},
+    ]
+    return plan
 
 @app.post("/api/recommend")
 def recommend(req: RecommendationRequest):
@@ -453,7 +393,7 @@ def recommend(req: RecommendationRequest):
 
     jobs=intel.get("jobs") or {}
     if jobs.get("status") != "fresh":
-        add_blocker("jobs_feed","Live vacancy coverage is limited", "Current role ranking is personalised, but an authorised live job provider is not configured, so advertised vacancy counts and employer activity are not yet fully live.", "Low")
+        add_blocker("jobs_feed","Live vacancy coverage is limited", jobs.get("note") or "Current advertised vacancies could not be verified from the connected job provider.", "Low")
 
     # Keep only the most decision relevant blockers and make sure they genuinely vary by profile.
     order={"High":0,"Medium":1,"Low":2}
@@ -542,9 +482,6 @@ def recommend(req: RecommendationRequest):
         status="complete" if i<current_index else "current" if i==current_index else "next"
         pathway.append({"title":title,"detail":detail,"horizon":horizon,"confidence":confidence,"status":status})
 
-    high=sum(1 for b in blockers if b["severity"]=="High"); med=sum(1 for b in blockers if b["severity"]=="Medium")
-    readiness=max(28,min(94,42 + min(18,int(exp*5)) + min(16,len(skills)*2) + (8 if education else 0) + (5 if occupation.lower()!="general professional" else 0) - high*7 - med*3))
-
     first=blockers[0]
     action_map={
       "occupation":("Resolve your target occupation","Confirm the occupation before optimising jobs or migration options.",24,"Verify occupation"),
@@ -558,7 +495,7 @@ def recommend(req: RecommendationRequest):
       "optimisation":("Target the highest value opportunities",f"Your profile is sufficiently complete to focus on roles that strengthen your {occupation} pathway.",14,"View action plan")
     }
     title,why,impact,cta=action_map.get(first["code"],action_map["optimisation"])
-    top={"title":title,"why":why,"impact":impact,"cta":cta,"time":"Start now","blockerCode":first["code"]}
+    top={"title":title,"why":why,"cta":cta,"time":"Start now","blockerCode":first["code"]}
 
-    return {"readiness":readiness,"readinessLabel":"Career evidence readiness","topAction":top,"pathway":pathway,"blockers":blockers,"evidencePlan":evidence,"currentStep":current_index,"disclaimer":"Decision support only. Not legal or migration advice."}
+    return {"profileCompleteness":profile_checklist(p),"topAction":top,"pathway":pathway,"blockers":blockers,"evidencePlan":evidence,"currentStep":current_index,"disclaimer":"Decision support only. Not legal or migration advice."}
 
