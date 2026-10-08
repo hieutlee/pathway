@@ -1,6 +1,13 @@
 # Pathway: career fit, market evidence and PR roadmap
 
-## Migration tab: PR navigator (new)
+## Landing and resume review (new)
+
+* **Landing page.** Drag and drop or choose a resume (PDF, DOCX or TXT). Progress steps show while it is read, and a "Continue as ..." button appears for a saved profile.
+* **Section-aware parser** (`backend/resume_parser.py`). It splits the resume into its own sections, then reads entries anchored on date ranges. Experience comes only from each role's own dates; the old parser subtracted the earliest year anywhere in the text, so a standard such as AS 4254.2-2012 produced "14 years". Volunteering is separated even when it sits inside Experience. Education is read with its major or concentration and level, and high school is excluded from migration. Projects keep their tools. Achievements, publications, certifications, grouped skills, contact details and location are also extracted. DOCX tables are read as well.
+* **Occupation mapping** (`backend/occupations.py`). Occupations are suggested from the summary, degree major, recent roles and projects, each with its reasons. Every suggestion carries its ANZSCO code and assessing authority behind the scenes, so the candidate never types a code. A full catalogue and a free-text option are also available.
+* **"Check what we found" screen.** People can edit their details, visa and expiry. Work experience shows each role's duration and three totals: paid experience (overlaps counted once), experience relevant to the chosen occupation (ticked per role), and relevant experience after graduation (which counts for migration points). Roles are tagged as internship, overseas, remote or before graduation, and can be edited, added or removed. Volunteering is listed but not counted. The screen also covers education with major, projects with matching evidence, achievements and certifications, editable skills, and optional goals. Confirming fills the profile, the migration answers (qualification, field of study, completion date, Australian and overseas post-graduation experience, and whether the person currently works in their field) and the job search.
+
+## Migration tab: PR navigator
 
 The Migration tab is now a full planner. It turns the reviewed profile plus a short set of migration answers into dated routes to permanent residence.
 
@@ -173,6 +180,7 @@ cd frontend
 npm run test:overview
 npm run test:jobs
 npm run test:migration
+npm run test:review
 npm run build
 ```
 

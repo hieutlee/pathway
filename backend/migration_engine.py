@@ -553,6 +553,9 @@ def graduate_bridge(b: Builder):
         deadline = ctx.visa_expiry
     else:
         deadline_note = "Lodge within 6 months of the completion date on your completion letter, while you hold a visa."
+    if deadline < ctx.today:
+        b.risks.append({"level": "high", "title": "The 485 window has closed", "detail": f"Your course completed {label(comp)}, so the 6 month window to lodge a 485 ended {label(deadline)}. If you already lodged or hold a 485, change your visa on the profile so the plan starts from it."})
+        return None, ctx.visa_expiry
     a = ctx.age(deadline)
     exception = ctx.qualification in {"masters_research", "doctorate"}
     eligible = (a is None or a < (50 if exception else 35)) and ctx.qualification in {"bachelor", "masters_coursework", "masters_research", "doctorate", ""}

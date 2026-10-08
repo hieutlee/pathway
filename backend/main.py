@@ -17,6 +17,8 @@ import asyncio
 import migration_rules
 from migration_engine import build_plan
 from migration_live import gather_live
+import resume_parser
+import occupations
 from pypdf import PdfReader
 from docx import Document
 
@@ -93,76 +95,25 @@ async def parse_resume(file: UploadFile = File(...)):
         if name.endswith(".pdf"):
             reader=PdfReader(io.BytesIO(raw)); text="\n".join((p.extract_text() or "") for p in reader.pages)
         elif name.endswith(".docx"):
-            doc=Document(io.BytesIO(raw)); text="\n".join(p.text for p in doc.paragraphs)
+            doc=Document(io.BytesIO(raw))
+            parts=[p.text for p in doc.paragraphs]
+            for table in doc.tables:
+                for row in table.rows:
+                    parts.append(" | ".join(dict.fromkeys(c.text.strip() for c in row.cells if c.text.strip())))
+            text="\n".join(parts)
         else: text=raw.decode("utf-8",errors="ignore")
     except Exception:
         text=raw.decode("utf-8",errors="ignore")
-
-    lines=[x.strip() for x in text.splitlines() if x.strip()]
-    first=next((x for x in lines if 2<=len(x.split())<=5 and not re.search(r'@|http|resume|curriculum',x,re.I)), "Your profile")
-
-    skill_vocab=[
-        "C++","Python","C","C#","Java","JavaScript","TypeScript","React","Vue","Angular","Node.js","HTML","CSS","SQL",
-        "MATLAB","Simulink","SolidWorks","CAD","PLC","Embedded systems","Firmware","RTOS","Control systems","CUDA","Linux","Git",
-        "AWS","Azure","TensorFlow","PyTorch","Electronics","PCB","ROS","Excel","Power BI","Tableau","Salesforce","MYOB","Xero",
-        "Financial modelling","Marketing","SEO","Google Analytics","Customer service","Project management","Accounting","Bookkeeping",
-        "Data analysis","Machine learning","Nursing","Patient care","Clinical care","AutoCAD","Revit","Figma","UX","UI design"
-    ]
-    skills=[s for s in skill_vocab if re.search(rf'(?<!\w){re.escape(s)}(?!\w)',text,re.I)]
-    degree_match=re.search(r'(Bachelor[^\n,]{0,100}|Master[^\n,]{0,100}|PhD[^\n,]{0,100}|Diploma[^\n,]{0,100}|Certificate[^\n,]{0,100})',text,re.I)
-
-    role_families=[
-        {"family":"Web and software development","occupation":"Software Developer","roles":["Web Developer","Frontend Developer","Full Stack Developer","Software Developer","Junior Software Engineer"],"keywords":["javascript","typescript","react","vue","angular","node","html","css","web developer","frontend","full stack","software developer","github"]},
-        {"family":"Data and analytics","occupation":"Data Analyst","roles":["Data Analyst","Business Intelligence Analyst","Junior Data Scientist","Reporting Analyst","Analytics Consultant"],"keywords":["data analyst","data analysis","sql","power bi","tableau","python","analytics","machine learning","statistics"]},
-        {"family":"Business and consulting","occupation":"Business Analyst","roles":["Graduate Business Analyst","Business Analyst","Operations Analyst","Junior Consultant","Commercial Analyst"],"keywords":["business","commerce","business analyst","operations","consulting","commercial","stakeholder","process improvement","excel","power bi"]},
-        {"family":"Marketing and communications","occupation":"Marketing Specialist","roles":["Marketing Coordinator","Digital Marketing Coordinator","Marketing Analyst","Content Coordinator","Customer Insights Analyst"],"keywords":["marketing","seo","campaign","social media","google analytics","content","brand","communications","customer insights"]},
-        {"family":"Accounting and finance","occupation":"Accountant","roles":["Graduate Accountant","Assistant Accountant","Financial Analyst","Accounts Officer","Junior Management Accountant"],"keywords":["accounting","accountant","finance","financial","bookkeeping","xero","myob","audit","tax","financial modelling"]},
-        {"family":"Embedded and electronics","occupation":"Embedded Systems Engineer","roles":["Embedded Software Engineer","Firmware Engineer","Electronics Engineer","IoT Engineer","Junior Robotics Engineer"],"keywords":["embedded","firmware","rtos","microcontroller","stm32","esp32","pcb","electronics","c++","c language","uart","spi","i2c"]},
-        {"family":"Mechatronics and automation","occupation":"Mechatronics Engineer","roles":["Mechatronics Engineer","Automation Engineer","Controls Engineer","Robotics Engineer","Systems Engineer"],"keywords":["mechatronics","plc","control systems","simulink","matlab","robotics","automation","solidworks","cad"]},
-        {"family":"Mechanical engineering","occupation":"Mechanical Engineer","roles":["Mechanical Engineer","Graduate Mechanical Engineer","Design Engineer","Manufacturing Engineer","Project Engineer"],"keywords":["mechanical engineer","solidworks","mechanical design","fea","manufacturing","cad","thermodynamics"]},
-        {"family":"Electrical engineering","occupation":"Electrical Engineer","roles":["Electrical Engineer","Graduate Electrical Engineer","Controls Engineer","Power Systems Engineer","Electronics Engineer"],"keywords":["electrical engineer","power systems","circuit","electronics","plc","control systems","pcb"]},
-        {"family":"Civil and construction","occupation":"Civil Engineer","roles":["Graduate Civil Engineer","Civil Engineer","Site Engineer","Project Engineer","Structural Engineer"],"keywords":["civil engineer","construction","structural","autocad","revit","site engineer","infrastructure"]},
-        {"family":"Nursing and healthcare","occupation":"Registered Nurse","roles":["Registered Nurse","Graduate Nurse","Clinical Nurse","Aged Care Nurse","Community Nurse"],"keywords":["registered nurse","nursing","patient care","clinical","hospital","aged care","healthcare"]},
-        {"family":"Project and operations","occupation":"Project Coordinator","roles":["Project Coordinator","Project Officer","Operations Coordinator","Junior Project Manager","Program Coordinator"],"keywords":["project management","project coordinator","project officer","program","operations coordinator","schedule","stakeholder"]}
-    ]
-
-    lower=text.lower()
-    scored=[]
-    for fam in role_families:
-        score=sum(2 if " " in kw else 1 for kw in fam["keywords"] if kw in lower)
-        if score:
-            scored.append((score,fam))
-    scored.sort(key=lambda x:x[0], reverse=True)
-    if scored:
-        best=scored[0][1]
-        occupation=best["occupation"]
-        role_candidates=[]
-        for score,fam in scored[:3]:
-            confidence=min(96,55+score*7)
-            for role in fam["roles"][:3]:
-                role_candidates.append({"title":role,"confidence":confidence,"family":fam["family"]})
-        seen=set(); role_candidates=[r for r in role_candidates if not (r["title"] in seen or seen.add(r["title"]))][:8]
-        career_family=best["family"]
-    else:
-        occupation="General professional"
-        career_family="General professional"
-        role_candidates=[{"title":"Graduate Program","confidence":55,"family":"General"},{"title":"Entry Level Professional","confidence":50,"family":"General"}]
-
+    if len(text.strip())<80:
+        return {"status":"unreadable","note":"Very little text could be read from this file. It may be a scanned image. Try a text-based PDF or DOCX.","resume":None}
+    resume=resume_parser.parse(text)
     hints=migration_hints(text)
-    years=[int(m.group(1)) for m in re.finditer(r'\b(20\d{2})\b',text)]
-    exp=max(0,min(15,(max(years)-min(years)) if len(years)>1 else 0))
-    return {
-        "name":first,
-        "occupation":occupation,
-        "careerFamily":career_family,
-        "roleCandidates":role_candidates,
-        "education":degree_match.group(1).strip() if degree_match else "Qualification detected from resume",
-        "experienceYears":exp,
-        "skills":skills[:16] or ["Add skills from resume"],
-        "goal":f"Build a meaningful Australian career in {career_family.lower()} and understand realistic migration options",
-        "visa":hints.pop("visa",""),
-        "migrationHints":hints
-    }
+    best=resume["suggestions"][0] if resume["suggestions"] else None
+    return {"status":"parsed","resume":resume,"visa":hints.pop("visa",""),"migrationHints":hints,"occupation":best}
+
+@app.get("/api/occupations")
+def occupation_catalogue():
+    return {"occupations":occupations.catalogue_payload()}
 
 
 MONTHS={m:i for i,m in enumerate(["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"],1)}

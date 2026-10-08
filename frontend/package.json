@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test:overview": "node scripts/check-overview.mjs",
     "test:jobs": "node scripts/check-jobs.mjs",
-    "test:migration": "node scripts/check-migration.mjs"
+    "test:migration": "node scripts/check-migration.mjs",
+    "test:review": "node scripts/check-review.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "6.1.2",

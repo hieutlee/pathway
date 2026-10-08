@@ -6,6 +6,7 @@ import './styles.css'
 import Overview from './Overview'
 import Jobs from './Jobs'
 import Migration, {MigrationSummaryCard, MigrationMilestones} from './Migration'
+import {Landing, ResumeReview, SAMPLE_RESUME} from './ResumeReview'
 
 const API = '/api'
 
@@ -55,6 +56,9 @@ function App(){
   const [planLoading,setPlanLoading]=useState(false)
   const [planError,setPlanError]=useState('')
   const [planNonce,setPlanNonce]=useState(0)
+  const [resume,setResume]=useState(saved?.resume||null)
+  const [catalogue,setCatalogue]=useState([])
+  useEffect(()=>{fetch(`${API}/occupations`).then(r=>r.ok?r.json():null).then(d=>d&&setCatalogue(d.occupations||[])).catch(()=>{})},[])
   const [sources,setSources]=useState(initialSources)
   const [data,setData]=useState(null)
   const [busy,setBusy]=useState(false)
@@ -66,7 +70,7 @@ function App(){
   const jobSequence=useRef(0)
   const updateCircumstances=v=>{setIsSample(false);setCircumstances(v)}
 
-  useEffect(()=>{save({profile,circumstances,activeStrategy,checks,fileName,isSample})},[profile,circumstances,activeStrategy,checks,fileName,isSample])
+  useEffect(()=>{save({profile,circumstances,activeStrategy,checks,fileName,isSample,resume})},[profile,circumstances,activeStrategy,checks,fileName,isSample,resume])
   const jobSignal=useMemo(()=>jobsSummary(data?.jobs),[data?.jobs])
   const jobSignalKey=JSON.stringify(jobSignal)
   useEffect(()=>{
@@ -91,8 +95,8 @@ function App(){
     setData(prev=>({...prev,jobs:payload}))
     setSources(prev=>prev.map(s=>s.id==='jobs'?{...s,status:payload.status,cached:payload.cached,checkedAt:payload.checkedAt,freshness:payload.freshness}:s))
   }
-  function jobBody(query,startIfMissing){
-    return {...query,startIfMissing,profile:{occupation:profile.occupation||'',skills:profile.skills||[],experienceYears:profile.experienceYears===''||profile.experienceYears==null?null:Number(profile.experienceYears)}}
+  function jobBody(query,startIfMissing,p=profile){
+    return {...query,startIfMissing,profile:{occupation:p.occupation||'',skills:p.skills||[],experienceYears:p.experienceYears===''||p.experienceYears==null?null:Number(p.experienceYears)}}
   }
   async function fetchJobs(query,startIfMissing=true,signal){
     const res=await fetch(`${API}/jobs/search`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(jobBody(query,startIfMissing)),signal:signal||AbortSignal.timeout(90000)})
@@ -129,37 +133,43 @@ function App(){
       const res=await fetch(`${API}/profile/parse-resume`,{method:'POST',body})
       if(!res.ok) throw new Error('Resume analysis failed')
       const parsed=await res.json()
-      const {migrationHints={},...rest}=parsed
-      setProfile(p=>({...p,...rest, anzsco:parsed.anzsco||'', osca:parsed.osca||'', visa:parsed.visa||'', detectedVisa:parsed.visa||'', visaExpiry:parsed.visaExpiry||'', name:parsed.name||p.name}))
-      const {found,englishNote,studyRegionalNote,...hints}=migrationHints
-      setCircumstances({...emptyCircumstances,...hints,preferredStates:hints.studyState?[hints.studyState]:[]}); setIsSample(false); setChecks({}); setActiveStrategy(null)
-      setScreen('profile')
+      if(parsed.status!=='parsed'||!parsed.resume){setError(parsed.note||'This file could not be read. Try a text-based PDF or DOCX.');return}
+      const {found,englishNote,studyRegionalNote,visa:_v,...hints}=parsed.migrationHints||{}
+      setResume(parsed.resume)
+      setProfile({...defaultProfile,name:parsed.resume.name||'',location:parsed.resume.location||'',visa:parsed.visa||'',detectedVisa:parsed.visa||'',visaExpiry:'',occupation:'',anzsco:'',roleCandidates:[],skills:[],goal:''})
+      setCircumstances({...emptyCircumstances,englishLevel:hints.englishLevel||'',naati:!!hints.naati,professionalYear:!!hints.professionalYear})
+      setIsSample(false); setChecks({}); setActiveStrategy(null); setPlan(null)
+      setScreen('review')
     }catch(e){
-      setError('I could not reach the resume parser. You can still continue with the editable demo profile.')
-      setScreen('profile')
+      setError('The resume reader could not be reached. Check the backend is running, or explore the sample profile.')
     }finally{setBusy(false)}
   }
+  function confirmReview(patch,circ){
+    const next={...profile,...patch}
+    setProfile(next); setCircumstances(prev=>({...prev,...circ})); setResume(patch.resume)
+    runIntelligence(next)
+  }
 
-  async function runIntelligence(){
+  async function runIntelligence(p=profile){
     ++jobSequence.current; setScreen('dashboard'); setBusy(true); setData(null); setSources(initialSources.map(s=>({...s,status:'loading'})))
     const order=['migration','occupation','vacancies','jobs']
     try{
       const tasks=order.map(async (key,i)=>{
         setSources(prev=>prev.map(s=>s.id===key?{...s,status:'loading'}:s))
         const params=new URLSearchParams({
-          occupation: profile.occupation||'',
-          state: profile.location.split(',').pop()?.trim()||'QLD',
-          anzsco: profile.anzsco||'',
-          ...(key==='occupation'?{osca:profile.osca||''}:{})
+          occupation: p.occupation||'',
+          state: (p.location||'').split(',').pop()?.trim()||'QLD',
+          anzsco: p.anzsco||'',
+          ...(key==='occupation'?{osca:p.osca||''}:{})
         })
         if(key==='migration'){
-          params.set('visa',profile.visa||'')
-          params.set('experienceYears',String(profile.experienceYears||0))
-          params.set('education',profile.education||'')
+          params.set('visa',p.visa||'')
+          params.set('experienceYears',String(p.experienceYears||0))
+          params.set('education',p.education||'')
         }
         let payload
         try{
-          const res=key==='jobs'?await fetch(`${API}/jobs/search`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(jobBody({role:profile.occupation,location:profile.location,dateWindow:'anyTime'},true)),signal:AbortSignal.timeout(90000)}):await fetch(`${API}/intelligence/${key}?${params.toString()}`,{signal:AbortSignal.timeout(90000)})
+          const res=key==='jobs'?await fetch(`${API}/jobs/search`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(jobBody({role:p.occupation,location:p.location,dateWindow:'anyTime'},true,p)),signal:AbortSignal.timeout(90000)}):await fetch(`${API}/intelligence/${key}?${params.toString()}`,{signal:AbortSignal.timeout(90000)})
           if(!res.ok) throw new Error(`Request failed: ${res.status}`)
           payload=await res.json()
         }catch(error){
@@ -171,123 +181,19 @@ function App(){
       })
       const entries=await Promise.all(tasks)
       const intelligence=Object.fromEntries(entries)
-      const rec=await fetch(`${API}/recommend`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile,intelligence})}).then(r=>r.json())
+      const rec=await fetch(`${API}/recommend`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:p,intelligence})}).then(r=>r.json())
       setData(prev=>({...prev,recommendation:rec}))
     }catch(e){setError('Some live sources could not be reached. Pathway has kept source failures visible rather than disguising them as fresh data.')}
     finally{setBusy(false)}
   }
 
   const migration={plan,loading:planLoading,error:planError,circumstances,setCircumstances:updateCircumstances,activeId:activeStrategy,setActiveId:setActiveStrategy,checks,toggleCheck,onJobsAction,onRefresh:()=>setPlanNonce(n=>n+1),sample:isSample,setProfile}
-  if(screen==='onboarding') return <Onboarding busy={busy} error={error} fileName={fileName} onFile={parseResume} onDemo={()=>{setProfile(defaultProfile);setCircumstances(sampleCircumstances);setIsSample(true);setScreen('profile')}} saved={saved} onResume={runIntelligence}/>
-  if(screen==='profile') return <ProfileReview profile={profile} setProfile={setProfile} fileName={fileName} onBack={()=>setScreen('onboarding')} onContinue={runIntelligence}/>
-  return <Dashboard profile={profile} data={data} sources={sources} busy={busy} error={error} activeTab={activeTab} setActiveTab={setActiveTab} employerMode={employerMode} setEmployerMode={setEmployerMode} refresh={runIntelligence} edit={()=>setScreen('profile')} pricingOpen={pricingOpen} setPricingOpen={setPricingOpen} onJobSearch={searchJobs} migration={migration}/>
+  if(screen==='onboarding') return <Landing busy={busy} error={error} fileName={fileName} onFile={parseResume} onDemo={()=>{setResume(SAMPLE_RESUME);setFileName('');setProfile(defaultProfile);setCircumstances(sampleCircumstances);setIsSample(true);setChecks({});setActiveStrategy(null);setScreen('review')}} saved={saved} onResume={()=>runIntelligence()}/>
+  if(screen==='review') return <ResumeReview key={resume?.name+fileName} initialResume={resume||SAMPLE_RESUME} profile={profile} fileName={fileName} catalogue={catalogue} onBack={()=>{setError('');setScreen('onboarding')}} onConfirm={confirmReview}/>
+  return <Dashboard profile={profile} data={data} sources={sources} busy={busy} error={error} activeTab={activeTab} setActiveTab={setActiveTab} employerMode={employerMode} setEmployerMode={setEmployerMode} refresh={()=>runIntelligence()} edit={()=>setScreen('review')} pricingOpen={pricingOpen} setPricingOpen={setPricingOpen} onJobSearch={searchJobs} migration={migration}/>
 }
 
 function Brand(){return <div className="brand"><div className="brandmark"><Compass size={20}/></div><span>Pathway</span><span className="beta">LIVE</span></div>}
-
-function Onboarding({onFile,onDemo,busy,error,fileName,saved,onResume}){
-  return <main className="landing">
-    <nav><Brand/><div className="navnote"><ShieldCheck size={15}/> Built around source transparency</div></nav>
-    <section className="hero">
-      <div className="heroCopy">
-        <div className="eyebrow"><Sparkles size={15}/> AI powered Australian career intelligence</div>
-        <h1>Know the next move.<br/><span>Build a career that can stay.</span></h1>
-        <p className="lead">Upload your resume and Pathway turns your experience, visa situation and goals into a personalised action plan using current Australian migration and labour market intelligence.</p>
-        <div className="trustrow"><span><CircleCheck/>Career pathways</span><span><CircleCheck/>Migration signals</span><span><CircleCheck/>Live labour demand</span></div>
-      </div>
-      <div className="uploadCard">
-        <div className="uploadIcon"><UploadCloud/></div>
-        <h2>Start with your resume</h2>
-        <p>PDF, DOCX or TXT. We extract your education, experience and skills, then you review everything before analysis.</p>
-        <label className={`drop ${busy?'disabled':''}`}>
-          <input type="file" accept=".pdf,.doc,.docx,.txt" disabled={busy} onChange={e=>e.target.files?.[0]&&onFile(e.target.files[0])}/>
-          {busy?<><LoaderCircle className="spin"/> Analysing {fileName||'resume'}...</>:<><UploadCloud/> Choose resume</>}
-        </label>
-        {saved?.profile&&!saved.isSample&&<button className="primary resumeBtn" onClick={onResume}>Continue as {saved.profile.name||'your profile'} <ArrowUpRight size={16}/></button>}
-        <button className="textBtn" onClick={onDemo}>Explore with an editable sample profile <ChevronRight size={16}/></button>
-        {error&&<div className="warning"><AlertTriangle size={16}/>{error}</div>}
-        <div className="privacy"><ShieldCheck size={15}/><span>Your resume is used to build your profile. Production deployment should apply encryption, retention controls and consent management.</span></div>
-      </div>
-    </section>
-    <section className="sourceStrip"><span>Designed for live sources</span><b>Home Affairs</b><b>Jobs and Skills Australia</b><b>ABS</b><b>Job providers</b></section>
-  </main>
-}
-
-function Field({label,value,onChange,type='text'}){return <label className="field"><span>{label}</span><input type={type} value={value??''} onChange={e=>onChange(type==='number'?Number(e.target.value):e.target.value)}/></label>}
-
-const VISA_GROUPS = [
-  {label:'Study and graduate', options:[
-    'Student visa (subclass 500)',
-    'Student Guardian visa (subclass 590)',
-    'Temporary Graduate visa (subclass 485)',
-    'Training visa (subclass 407)'
-  ]},
-  {label:'Working holiday', options:[
-    'Working Holiday visa (subclass 417)',
-    'Work and Holiday visa (subclass 462)'
-  ]},
-  {label:'Employer sponsored and temporary work', options:[
-    'Skills in Demand visa (subclass 482)',
-    'Employer Nomination Scheme visa (subclass 186)',
-    'Skilled Employer Sponsored Regional visa (subclass 494)',
-    'Temporary Work Short Stay Specialist visa (subclass 400)',
-    'Temporary Work International Relations visa (subclass 403)',
-    'Temporary Activity visa (subclass 408)'
-  ]},
-  {label:'Skilled migration', options:[
-    'Skilled Independent visa (subclass 189)',
-    'Skilled Nominated visa (subclass 190)',
-    'Skilled Work Regional Provisional visa (subclass 491)',
-    'Permanent Residence Skilled Regional visa (subclass 191)',
-    'National Innovation visa (subclass 858)'
-  ]},
-  {label:'Family and partner', options:[
-    'Partner visa onshore (subclass 820)',
-    'Partner visa permanent (subclass 801)',
-    'Partner visa provisional (subclass 309)',
-    'Partner visa migrant (subclass 100)',
-    'Prospective Marriage visa (subclass 300)',
-    'Sponsored Parent Temporary visa (subclass 870)'
-  ]},
-  {label:'Visitor and other temporary', options:[
-    'Visitor visa (subclass 600)',
-    'Electronic Travel Authority (subclass 601)',
-    'eVisitor (subclass 651)'
-  ]},
-  {label:'Bridging visas', options:[
-    'Bridging visa A',
-    'Bridging visa B',
-    'Bridging visa C',
-    'Bridging visa E'
-  ]},
-  {label:'Other status', options:[
-    'Australian citizen',
-    'Australian permanent resident',
-    'Offshore with no current Australian visa',
-    'Other Australian visa',
-    'Unsure of current visa or status'
-  ]}
-]
-
-function VisaSelect({value,onChange,detected}){
-  const changed=detected && value && detected!==value
-  return <label className="field visaField"><span>Current visa or status</span><select value={value||''} onChange={e=>onChange(e.target.value)}><option value="" disabled>Select your current visa or status</option>{VISA_GROUPS.map(group=><optgroup key={group.label} label={group.label}>{group.options.map(option=><option key={option} value={option}>{option}</option>)}</optgroup>)}</select><small className="fieldHint">{detected ? <>Resume detected: <b>{detected}</b>{changed ? ' · You corrected this selection. Your selection will be used for analysis.' : ' · Confirm or change it before analysis.'}</> : 'Choose the status that applies to you. Your selection is used for pathway analysis.'}</small></label>
-}
-
-function ProfileReview({profile,setProfile,onContinue,onBack,fileName}){
-  const patch=(k,v)=>setProfile(p=>({...p,[k]:v,...(k==='occupation'?{anzsco:'',osca:'',roleCandidates:[{title:v}]}:{})}))
-  return <main className="profilePage"><nav><Brand/><button className="ghost" onClick={onBack}>Start over</button></nav>
-    <div className="stepper"><span className="done">1</span><i></i><span className="active">2</span><i></i><span>3</span><b>Resume</b><b>Review profile</b><b>Live analysis</b></div>
-    <section className="profileWrap">
-      <div className="sectionHeading"><div><div className="eyebrow">Profile intelligence</div><h1>Review what Pathway knows</h1><p>Correct anything before we query the Australian market. Recommendations are only as good as the profile they are based on.</p></div><div className="resumePill"><FileText size={17}/>{fileName||'Editable sample profile'}<BadgeCheck size={15}/></div></div>
-      <div className="formGrid">
-        <div className="formCard"><h3>Career profile</h3><Field label="Name" value={profile.name} onChange={v=>patch('name',v)}/><Field label="Current location" value={profile.location} onChange={v=>patch('location',v)}/><Field label="Target occupation" value={profile.occupation} onChange={v=>patch('occupation',v)}/><div className="two"><Field label="ANZSCO code" value={profile.anzsco} onChange={v=>patch('anzsco',v)}/><Field label="OSCA code" value={profile.osca} onChange={v=>patch('osca',v)}/></div><Field label="Qualification" value={profile.education} onChange={v=>patch('education',v)}/><Field label="Years of relevant experience" type="number" value={profile.experienceYears} onChange={v=>patch('experienceYears',v)}/></div>
-        <div className="formCard"><h3>Migration context</h3><VisaSelect value={profile.visa} detected={profile.detectedVisa} onChange={v=>patch('visa',v)}/><Field label="Visa expiry if known" type="date" value={profile.visaExpiry} onChange={v=>patch('visaExpiry',v)}/><label className="field"><span>Career goal</span><textarea value={profile.goal} onChange={e=>patch('goal',e.target.value)}/></label><label className="field"><span>Skills</span><textarea value={profile.skills.join(', ')} onChange={e=>patch('skills',e.target.value.split(',').map(x=>x.trim()).filter(Boolean))}/></label><div className="infoBox"><Database size={17}/><span>Pathway will query the latest available source data after you continue. It does not treat this profile as proof of visa eligibility.</span></div></div>
-      </div>
-      <div className="continueBar"><div><b>Ready for live analysis</b><span>Four intelligence modules will load independently with visible freshness status.</span></div><button className="primary" onClick={onContinue}>Analyse my pathway <ArrowUpRight size={18}/></button></div>
-    </section>
-  </main>
-}
 
 function StatusBadge({source}){
   const labels={loading:'Loading',idle:'Waiting',fresh:source.cached?'Verified · cached':'Verified',partial:'Incomplete data',unavailable:'Unavailable',not_configured:'Not connected',stale:'Older data'}
